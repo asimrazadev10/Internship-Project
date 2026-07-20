@@ -1,0 +1,50 @@
+# Local development services for the Group Chat Application.
+#
+# Postgres  — system of record for users, groups, memberships and messages.
+# Redis     — used from Phase 3 onward: Socket.IO adapter (multi-node broadcast fan-out)
+#             and, from Phase 4, the BullMQ job store.
+#
+# Values fall back to sane defaults so `docker compose up -d` works with no .env present,
+# while still honouring one if you create it from .env.example.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: chat-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-chatuser}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-chatpass}
+      POSTGRES_DB: ${POSTGRES_DB:-chatdb}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      # Depended on by the API/workers so they don't start against a DB that isn't accepting
+      # connections yet — Postgres briefly listens before it is actually ready.
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-chatuser} -d ${POSTGRES_DB:-chatdb}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: chat-redis
+    restart: unless-stopped
+    # appendonly yes => AOF persistence. BullMQ keeps queued jobs in Redis, so without
+    # persistence a container restart silently drops every pending summary job.
+    command: redis-server --appendonly yes
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres-data:
+  redis-data:
