@@ -1,0 +1,67 @@
+import { plainToInstance, Type } from 'class-transformer';
+import {
+  IsEnum,
+  IsInt,
+  IsNotEmpty,
+  IsString,
+  Max,
+  Min,
+  validateSync,
+} from 'class-validator';
+
+/**
+ * Startup configuration contract.
+ *
+ * The application must refuse to boot on a missing or malformed value rather than failing
+ * later at the first request that happens to need it. A container that crashes immediately
+ * on a bad config is trivially diagnosable; one that starts and then 500s under traffic is not.
+ *
+ * class-validator is used here rather than Joi so that configuration and HTTP request
+ * payloads share one validation stack — one mental model, one set of decorators.
+ *
+ * Scope note: only what this build actually consumes is declared. JWT, Google OAuth, Redis
+ * and Gemini variables are added to this class in the phase that introduces them. Requiring
+ * GEMINI_API_KEY to boot a Phase 1 REST API would be a false constraint.
+ */
+
+export enum NodeEnv {
+  Development = 'development',
+  Production = 'production',
+  Test = 'test',
+}
+
+export class EnvironmentVariables {
+  @IsEnum(NodeEnv, {
+    message: `NODE_ENV must be one of: ${Object.values(NodeEnv).join(', ')}`,
+  })
+  NODE_ENV: NodeEnv = NodeEnv.Development;
+
+  // Environment variables arrive as strings; @Type converts before the numeric rules run.
+  @Type(() => Number)
+  @IsInt({ message: 'PORT must be an integer' })
+  @Min(1)
+  @Max(65535)
+  PORT = 3000;
+
+  @IsString()
+  @IsNotEmpty({ message: 'DATABASE_URL is required' })
+  DATABASE_URL!: string;
+}
+
+export function validateEnv(raw: Record<string, unknown>): EnvironmentVariables {
+  // plainToInstance copies every key, so unrelated environment variables survive into
+  // ConfigService. Only the declared properties are validated.
+  const config = plainToInstance(EnvironmentVariables, raw);
+
+  const errors = validateSync(config, { skipMissingProperties: false });
+
+  if (errors.length > 0) {
+    const details = errors
+      .map((e) => `  - ${e.property}: ${Object.values(e.constraints ?? {}).join('; ')}`)
+      .join('\n');
+
+    throw new Error(`Invalid environment configuration:\n${details}`);
+  }
+
+  return config;
+}
