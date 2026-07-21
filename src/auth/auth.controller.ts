@@ -3,6 +3,7 @@ import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
 import { Public } from '../common/decorators/public.decorator';
 import { ResponseMessage } from '../common/decorators/response-message.decorator';
 import { AuthService } from './auth.service';
+import { GoogleLoginDto } from './dto/google.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshDto } from './dto/refresh.dto';
 import { RegisterDto } from './dto/register.dto';
@@ -39,6 +40,14 @@ export class AuthController {
   @ResponseMessage('Token refreshed')
   refresh(@Body() dto: RefreshDto): Promise<AuthResult> {
     return this.authService.refresh(dto.refreshToken);
+  }
+
+  @Public()
+  @Post('google')
+  @HttpCode(HttpStatus.OK)
+  @ResponseMessage('Login successful')
+  google(@Body() dto: GoogleLoginDto): Promise<AuthResult> {
+    return this.authService.googleLogin(dto.idToken);
   }
 
   /**

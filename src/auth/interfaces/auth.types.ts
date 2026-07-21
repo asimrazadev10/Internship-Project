@@ -20,3 +20,14 @@ export interface AuthTokens {
 export interface AuthResult extends AuthTokens {
   user: UserEntity;
 }
+
+/**
+ * The verified identity extracted from a Google ID token. Only the claims the app trusts and
+ * stores — never Google's token itself, which is discarded after verification.
+ */
+export interface GoogleIdentity {
+  /** Google's stable subject id (the `sub` claim). Identity is keyed on this, not email. */
+  providerId: string;
+  email: string;
+  name: string;
+}

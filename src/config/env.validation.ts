@@ -73,6 +73,15 @@ export class EnvironmentVariables {
   @IsString()
   @IsNotEmpty()
   JWT_REFRESH_EXPIRES_IN: string = '7d';
+
+  // The OAuth client id issued by Google Cloud. It is the `audience` a Google ID token must
+  // carry, so token verification cannot work without it. Required at startup because Google
+  // sign-in is part of this build — the same phase-scoped rule the JWT and database settings
+  // follow. Only the client id is needed: the token-exchange flow verifies a token the client
+  // already holds, so there is no client secret and no authorization-code exchange.
+  @IsString()
+  @IsNotEmpty({ message: 'GOOGLE_CLIENT_ID is required' })
+  GOOGLE_CLIENT_ID!: string;
 }
 
 export function validateEnv(

@@ -8,6 +8,7 @@ import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
 import { UsersModule } from '../users/users.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
+import { GoogleService } from './google.service';
 import { PasswordService } from './password.service';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { TokenService } from './token.service';
@@ -47,6 +48,7 @@ import { TokenService } from './token.service';
     AuthService,
     PasswordService,
     TokenService,
+    GoogleService,
     JwtStrategy,
     { provide: APP_GUARD, useClass: JwtAuthGuard },
   ],
