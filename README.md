@@ -32,20 +32,27 @@ appear on refresh (real-time arrives in Phase 3).
 
 ---
 
+## Repository layout
+
+This is a monorepo. The NestJS API lives in `backend/`; the Next.js frontend (added in
+Phase 2) lives in `frontend/`. Shared dev infrastructure (`docker-compose.yml`) sits at the
+root. Run backend commands from `backend/`.
+
 ## Setup
 
 ```bash
-# 1. Start local services (Postgres + Redis)
+# 1. Start local services (Postgres + Redis) — from the repo root
 docker compose up -d
 
-# 2. Install dependencies
+# 2. Backend
+cd backend
 npm install
 
-# 3. Create your env file and fill it in
+# 3. Create your env file and fill it in (inside backend/)
 cp .env.example .env
 #    - generate two different JWT secrets, e.g.:  openssl rand -base64 48
 #    - set GOOGLE_CLIENT_ID to your Google Cloud OAuth client id (for /auth/google)
-#    - DATABASE_URL must match the Postgres port published by docker-compose
+#    - DATABASE_URL must use port 55432 (the port docker-compose publishes)
 
 # 4. Apply migrations (creates the schema)
 npx prisma migrate dev
@@ -62,6 +69,8 @@ npm run start:dev
 ---
 
 ## Commands
+
+All backend commands run from `backend/` (except `docker compose`, which runs from the root).
 
 ```bash
 npm run start:dev       # API with watch reload
@@ -154,17 +163,20 @@ when new messages arrive between page requests and is O(log n) at any depth.
 ## Project structure
 
 ```
-src/
-  config/          # env loading + startup validation
-  common/          # filters, interceptors, guards, decorators, pipes, DTOs, utils
-  prisma/          # PrismaService + module
-  auth/            # register/login/refresh/logout/google, JWT strategy, token rotation
-  users/           # user persistence + serialization entity
-  groups/          # groups + membership + join
-  messages/        # message create + cursor-paginated history
-prisma/
-  schema.prisma    # data model
-  migrations/      # versioned schema changes
+backend/                 # NestJS API
+  src/
+    config/              # env loading + startup validation
+    common/              # filters, interceptors, guards, decorators, pipes, DTOs, utils
+    prisma/              # PrismaService + module
+    auth/                # register/login/refresh/logout/google, JWT strategy, token rotation
+    users/               # user persistence + serialization entity
+    groups/              # groups + membership + join
+    messages/            # message create + cursor-paginated history
+  prisma/
+    schema.prisma        # data model
+    migrations/          # versioned schema changes
+frontend/                # Next.js app (Phase 2)
+docker-compose.yml       # shared dev services (Postgres, Redis)
 ```
 
 ---
