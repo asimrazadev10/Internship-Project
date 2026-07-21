@@ -2,23 +2,35 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { useState } from "react";
 
 import { AppHeader } from "@/components/app-header";
+import { MessageComposer } from "@/components/messages/message-composer";
+import { MessageList } from "@/components/messages/message-list";
 import { getApiErrorMessage } from "@/lib/api/error";
 import { useRequireAuth } from "@/lib/auth/use-require-auth";
 import { useGroup } from "@/lib/queries/groups";
 
 /**
- * A single group: its name and members. The message list and composer (where Phase 2 polling
- * attaches) are added in the next piece.
+ * A group's chat view: a compact header (name, member count, copyable group id for inviting via
+ * the open-join model), the scrollable message history, and the composer.
  *
- * A non-member hitting this URL gets the backend's 403, surfaced as a clear message rather than a
- * blank screen — the membership guard doing its job, visible to the user.
+ * A non-member gets the backend's 403, surfaced as a clear message — the membership guard, made
+ * visible, rather than a blank screen.
  */
 export default function GroupPage() {
   const status = useRequireAuth();
   const params = useParams<{ id: string }>();
-  const { data: group, isLoading, isError, error } = useGroup(params.id);
+  const groupId = params.id;
+  const { data: group, isLoading, isError, error } = useGroup(groupId);
+  const [copied, setCopied] = useState(false);
+
+  function copyId() {
+    void navigator.clipboard.writeText(groupId).then(() => {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    });
+  }
 
   if (status !== "authenticated") {
     return (
@@ -31,59 +43,58 @@ export default function GroupPage() {
   return (
     <div className="flex min-h-full flex-1 flex-col">
       <AppHeader />
-      <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 px-4 py-8">
-        <Link
-          href="/"
-          className="text-sm text-zinc-500 transition hover:text-zinc-900 dark:hover:text-zinc-100"
-        >
-          ← All groups
-        </Link>
 
-        {isLoading && <p className="text-sm text-zinc-500">Loading group…</p>}
+      <div className="mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col px-4">
+        <div className="flex flex-col gap-2 py-4">
+          <Link
+            href="/"
+            className="text-sm text-zinc-500 transition hover:text-zinc-900 dark:hover:text-zinc-100"
+          >
+            ← All groups
+          </Link>
 
-        {isError && (
-          <p role="alert" className="text-sm text-red-600 dark:text-red-400">
-            {getApiErrorMessage(error, "Couldn't load this group")}
-          </p>
-        )}
+          {isError && (
+            <p role="alert" className="text-sm text-red-600 dark:text-red-400">
+              {getApiErrorMessage(error, "Couldn't load this group")}
+            </p>
+          )}
 
+          {group && (
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <div>
+                <h1 className="text-xl font-semibold tracking-tight">
+                  {group.name}
+                </h1>
+                <p className="text-sm text-zinc-500">
+                  {group.members.length} member
+                  {group.members.length === 1 ? "" : "s"}
+                </p>
+              </div>
+              <button
+                onClick={copyId}
+                title="Copy group id — share it so others can join"
+                className="rounded-md border border-zinc-300 px-2 py-1 text-xs text-zinc-500 transition hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
+              >
+                {copied ? "Copied!" : "Copy group id"}
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* The message area and composer only make sense once the group (hence membership) loads. */}
         {group && (
           <>
-            <header>
-              <h1 className="text-2xl font-semibold tracking-tight">
-                {group.name}
-              </h1>
-              <p className="mt-1 text-sm text-zinc-500">
-                {group.members.length} member
-                {group.members.length === 1 ? "" : "s"}
-              </p>
-            </header>
-
-            <section className="flex flex-col gap-2">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
-                Members
-              </h2>
-              <ul className="flex flex-col gap-1">
-                {group.members.map((member) => (
-                  <li
-                    key={member.user.id}
-                    className="flex items-center justify-between rounded-md border border-zinc-200 px-3 py-2 text-sm dark:border-zinc-800"
-                  >
-                    <span>{member.user.name}</span>
-                    <span className="text-xs uppercase tracking-wide text-zinc-400">
-                      {member.role}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </section>
-
-            <div className="rounded-lg border border-dashed border-zinc-300 p-8 text-center text-sm text-zinc-500 dark:border-zinc-700">
-              Messages will appear here. (Coming next.)
-            </div>
+            <MessageList groupId={groupId} />
+            <MessageComposer groupId={groupId} />
           </>
         )}
-      </main>
+
+        {isLoading && (
+          <div className="flex flex-1 items-center justify-center">
+            <p className="text-sm text-zinc-500">Loading group…</p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
