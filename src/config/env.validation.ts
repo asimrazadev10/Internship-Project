@@ -6,6 +6,7 @@ import {
   IsString,
   Max,
   Min,
+  MinLength,
   validateSync,
 } from 'class-validator';
 
@@ -46,9 +47,37 @@ export class EnvironmentVariables {
   @IsString()
   @IsNotEmpty({ message: 'DATABASE_URL is required' })
   DATABASE_URL!: string;
+
+  // Access and refresh use SEPARATE secrets on purpose: a leaked access secret must not let an
+  // attacker mint refresh tokens, and vice versa. Both are required — no default, because a
+  // fallback secret in code is the same as no secret at all.
+  @IsString()
+  @IsNotEmpty({ message: 'JWT_ACCESS_SECRET is required' })
+  @MinLength(32, {
+    message: 'JWT_ACCESS_SECRET should be at least 32 characters',
+  })
+  JWT_ACCESS_SECRET!: string;
+
+  @IsString()
+  @IsNotEmpty({ message: 'JWT_REFRESH_SECRET is required' })
+  @MinLength(32, {
+    message: 'JWT_REFRESH_SECRET should be at least 32 characters',
+  })
+  JWT_REFRESH_SECRET!: string;
+
+  // Duration strings (e.g. "15m", "7d"). Short access token, long refresh token.
+  @IsString()
+  @IsNotEmpty()
+  JWT_ACCESS_EXPIRES_IN: string = '15m';
+
+  @IsString()
+  @IsNotEmpty()
+  JWT_REFRESH_EXPIRES_IN: string = '7d';
 }
 
-export function validateEnv(raw: Record<string, unknown>): EnvironmentVariables {
+export function validateEnv(
+  raw: Record<string, unknown>,
+): EnvironmentVariables {
   // plainToInstance copies every key, so unrelated environment variables survive into
   // ConfigService. Only the declared properties are validated.
   const config = plainToInstance(EnvironmentVariables, raw);
@@ -57,7 +86,10 @@ export function validateEnv(raw: Record<string, unknown>): EnvironmentVariables 
 
   if (errors.length > 0) {
     const details = errors
-      .map((e) => `  - ${e.property}: ${Object.values(e.constraints ?? {}).join('; ')}`)
+      .map(
+        (e) =>
+          `  - ${e.property}: ${Object.values(e.constraints ?? {}).join('; ')}`,
+      )
       .join('\n');
 
     throw new Error(`Invalid environment configuration:\n${details}`);

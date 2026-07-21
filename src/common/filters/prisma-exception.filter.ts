@@ -1,11 +1,6 @@
-import {
-  ArgumentsHost,
-  Catch,
-  ExceptionFilter,
-  Logger,
-} from '@nestjs/common';
+import { ArgumentsHost, Catch, ExceptionFilter, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { Response } from 'express';
+import { Request, Response } from 'express';
 
 import { ErrorResponse } from '../http/api-response';
 import { mapPrismaError } from './prisma-error.mapper';
@@ -25,11 +20,12 @@ export class PrismaExceptionFilter implements ExceptionFilter {
   catch(exception: Prisma.PrismaClientKnownRequestError, host: ArgumentsHost) {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
+    const request = ctx.getRequest<Request>();
 
     const { status, code, message } = mapPrismaError(exception);
 
     this.logger.warn(
-      `Prisma ${exception.code} on ${ctx.getRequest().method} ${ctx.getRequest().url} -> ${status}`,
+      `Prisma ${exception.code} on ${request.method} ${request.url} -> ${status}`,
     );
 
     const body: ErrorResponse = {

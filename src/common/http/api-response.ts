@@ -56,7 +56,9 @@ export interface PaginatedPayload<T> {
   meta: PaginationMeta | Record<string, unknown>;
 }
 
-export function isPaginatedPayload(value: unknown): value is PaginatedPayload<unknown> {
+export function isPaginatedPayload(
+  value: unknown,
+): value is PaginatedPayload<unknown> {
   return (
     typeof value === 'object' &&
     value !== null &&

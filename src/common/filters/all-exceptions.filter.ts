@@ -48,7 +48,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
   }
 
   private buildError(exception: unknown): {
-    status: number;
+    status: HttpStatus;
     body: ErrorResponse;
   } {
     if (exception instanceof Prisma.PrismaClientKnownRequestError) {
@@ -75,9 +75,11 @@ export class AllExceptionsFilter implements ExceptionFilter {
   }
 
   private fromHttpException(exception: HttpException): {
-    status: number;
+    status: HttpStatus;
     body: ErrorResponse;
   } {
+    // getStatus() is typed as number; every value it returns is an HTTP status, so narrowing to
+    // HttpStatus lets the comparisons below share an enum type instead of mixing number/enum.
     const status = exception.getStatus();
     const payload = exception.getResponse();
 
@@ -116,7 +118,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     };
   }
 
-  private codeForStatus(status: number): ErrorCodeValue {
+  private codeForStatus(status: HttpStatus): ErrorCodeValue {
     switch (status) {
       case HttpStatus.BAD_REQUEST:
         return ErrorCode.BAD_REQUEST;

@@ -1,10 +1,17 @@
-import { Controller, Get, INestApplication, Module, NotFoundException } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  INestApplication,
+  Module,
+  NotFoundException,
+} from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { Exclude } from 'class-transformer';
 import request from 'supertest';
 import { App } from 'supertest/types';
 
 import { AppModule } from './../src/app.module';
+import { Public } from './../src/common/decorators/public.decorator';
 
 /**
  * Verifies the global response pipeline end to end, before any real endpoint depends on it.
@@ -41,6 +48,10 @@ const makeUser = (id: string) =>
     password: 'LEAKED_PASSWORD_HASH',
   });
 
+// @Public() so these fixtures exercise the response pipeline without the global JwtAuthGuard
+// (added with the auth module) turning every probe route into a 401. This test is about
+// serialization and the envelope, not authentication.
+@Public()
 @Controller('probe')
 class ProbeController {
   /** A bare entity — the ordinary case. */
@@ -85,9 +96,13 @@ describe('global response pipeline', () => {
   });
 
   it('strips @Exclude() fields AND wraps in the success envelope', async () => {
-    const res = await request(app.getHttpServer()).get('/probe/user').expect(200);
+    const res = await request(app.getHttpServer())
+      .get('/probe/user')
+      .expect(200);
 
-    console.log('\n--- GET /probe/user ---\n' + JSON.stringify(res.body, null, 2));
+    console.log(
+      '\n--- GET /probe/user ---\n' + JSON.stringify(res.body, null, 2),
+    );
 
     expect(res.body).toEqual({
       success: true,
@@ -97,21 +112,33 @@ describe('global response pipeline', () => {
   });
 
   it('lifts meta to the envelope and serializes entities nested inside data', async () => {
-    const res = await request(app.getHttpServer()).get('/probe/paginated').expect(200);
+    const res = await request(app.getHttpServer())
+      .get('/probe/paginated')
+      .expect(200);
 
-    console.log('\n--- GET /probe/paginated ---\n' + JSON.stringify(res.body, null, 2));
+    console.log(
+      '\n--- GET /probe/paginated ---\n' + JSON.stringify(res.body, null, 2),
+    );
 
     expect(res.body.success).toBe(true);
-    expect(res.body.meta).toEqual({ limit: 20, nextCursor: null, hasMore: false });
+    expect(res.body.meta).toEqual({
+      limit: 20,
+      nextCursor: null,
+      hasMore: false,
+    });
     expect(res.body.data).toHaveLength(2);
     // The decisive assertion: nested instances must still be serialized.
     expect(JSON.stringify(res.body)).not.toContain('LEAKED_PASSWORD_HASH');
   });
 
   it('produces the error envelope for thrown HttpExceptions', async () => {
-    const res = await request(app.getHttpServer()).get('/probe/boom').expect(404);
+    const res = await request(app.getHttpServer())
+      .get('/probe/boom')
+      .expect(404);
 
-    console.log('\n--- GET /probe/boom ---\n' + JSON.stringify(res.body, null, 2));
+    console.log(
+      '\n--- GET /probe/boom ---\n' + JSON.stringify(res.body, null, 2),
+    );
 
     expect(res.body).toEqual({
       success: false,

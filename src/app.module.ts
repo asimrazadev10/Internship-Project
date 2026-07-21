@@ -1,11 +1,17 @@
-import { ClassSerializerInterceptor, Module, ValidationPipe } from '@nestjs/common';
+import {
+  ClassSerializerInterceptor,
+  Module,
+  ValidationPipe,
+} from '@nestjs/common';
 import { APP_FILTER, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
 
 import { AppConfigModule } from './config/config.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { PrismaExceptionFilter } from './common/filters/prisma-exception.filter';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
+import { AuthModule } from './auth/auth.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { UsersModule } from './users/users.module';
 
 /**
  * Cross-cutting concerns are bound here as providers rather than in main.ts via
@@ -19,7 +25,7 @@ import { PrismaModule } from './prisma/prisma.module';
  * envelope. Reversing these would serialize the envelope instead of the entity.
  */
 @Module({
-  imports: [AppConfigModule, PrismaModule],
+  imports: [AppConfigModule, PrismaModule, UsersModule, AuthModule],
   providers: [
     {
       provide: APP_PIPE,

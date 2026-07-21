@@ -9,10 +9,7 @@ import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
 
 import { RESPONSE_MESSAGE_KEY } from '../decorators/response-message.decorator';
-import {
-  isPaginatedPayload,
-  SuccessResponse,
-} from '../http/api-response';
+import { isPaginatedPayload, SuccessResponse } from '../http/api-response';
 
 /**
  * Wraps every successful handler return value in the standard envelope.
@@ -22,9 +19,10 @@ import {
  * the two shapes stay consistent without either component knowing about the other.
  */
 @Injectable()
-export class ResponseInterceptor<T>
-  implements NestInterceptor<T, SuccessResponse<unknown>>
-{
+export class ResponseInterceptor<T> implements NestInterceptor<
+  T,
+  SuccessResponse<unknown>
+> {
   constructor(private readonly reflector: Reflector) {}
 
   intercept(
