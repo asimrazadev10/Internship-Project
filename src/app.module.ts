@@ -10,6 +10,8 @@ import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { PrismaExceptionFilter } from './common/filters/prisma-exception.filter';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
 import { AuthModule } from './auth/auth.module';
+import { GroupsModule } from './groups/groups.module';
+import { MessagesModule } from './messages/messages.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { UsersModule } from './users/users.module';
 
@@ -25,7 +27,14 @@ import { UsersModule } from './users/users.module';
  * envelope. Reversing these would serialize the envelope instead of the entity.
  */
 @Module({
-  imports: [AppConfigModule, PrismaModule, UsersModule, AuthModule],
+  imports: [
+    AppConfigModule,
+    PrismaModule,
+    UsersModule,
+    AuthModule,
+    GroupsModule,
+    MessagesModule,
+  ],
   providers: [
     {
       provide: APP_PIPE,
