@@ -5,7 +5,7 @@ import { useEffect, useRef } from "react";
 import { getApiErrorMessage } from "@/lib/api/error";
 import type { Message } from "@/lib/api/types";
 import { useAuth } from "@/lib/auth/auth-context";
-import { useMessages } from "@/lib/queries/messages";
+import { useGroupMessages } from "@/lib/queries/messages";
 
 function formatTime(iso: string): string {
   return new Date(iso).toLocaleTimeString([], {
@@ -46,25 +46,20 @@ function MessageBubble({ message, isOwn }: { message: Message; isOwn: boolean })
 export function MessageList({ groupId }: { groupId: string }) {
   const { user } = useAuth();
   const {
-    data,
+    messages,
     isLoading,
     isError,
     error,
-    hasNextPage,
-    fetchNextPage,
-    isFetchingNextPage,
-  } = useMessages(groupId);
+    hasOlder,
+    loadOlder,
+    isLoadingOlder,
+  } = useGroupMessages(groupId);
 
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  // API pages are newest-first; flatten and reverse for chronological (oldest at top) display.
-  const messages: Message[] = data
-    ? data.pages.flatMap((page) => page.data).reverse()
-    : [];
-
-  // Scroll to the bottom when the NEWEST message changes — i.e. on first load and when a message
-  // is sent. Keyed on the last message's id (not the count) so loading OLDER history, which
-  // prepends at the top, does NOT yank the view back down.
+  // Scroll to the bottom when the NEWEST message changes — on first load and when a message
+  // arrives (sent or polled in). Keyed on the last message's id, not the count, so loading OLDER
+  // history (which prepends) does not yank the view back down.
   const newestId = messages[messages.length - 1]?.id;
   useEffect(() => {
     bottomRef.current?.scrollIntoView();
@@ -91,13 +86,13 @@ export function MessageList({ groupId }: { groupId: string }) {
   return (
     <div className="flex-1 overflow-y-auto">
       <div className="flex flex-col gap-3 px-1 py-4">
-        {hasNextPage && (
+        {hasOlder && (
           <button
-            onClick={() => void fetchNextPage()}
-            disabled={isFetchingNextPage}
+            onClick={() => void loadOlder()}
+            disabled={isLoadingOlder}
             className="mx-auto rounded-full border border-zinc-300 px-3 py-1 text-xs text-zinc-500 transition hover:bg-zinc-100 disabled:opacity-60 dark:border-zinc-700 dark:hover:bg-zinc-800"
           >
-            {isFetchingNextPage ? "Loading…" : "Load older messages"}
+            {isLoadingOlder ? "Loading…" : "Load older messages"}
           </button>
         )}
 

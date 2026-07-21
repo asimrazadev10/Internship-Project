@@ -65,9 +65,15 @@ export default function GroupPage() {
                 <h1 className="text-xl font-semibold tracking-tight">
                   {group.name}
                 </h1>
-                <p className="text-sm text-zinc-500">
-                  {group.members.length} member
-                  {group.members.length === 1 ? "" : "s"}
+                <p className="flex items-center gap-2 text-sm text-zinc-500">
+                  <span>
+                    {group.members.length} member
+                    {group.members.length === 1 ? "" : "s"}
+                  </span>
+                  <span className="flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                    Live · updates every 10s
+                  </span>
                 </p>
               </div>
               <button
