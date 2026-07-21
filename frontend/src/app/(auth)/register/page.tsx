@@ -5,9 +5,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
+import { GoogleButton } from "@/components/auth/google-button";
+import { Field, FormError, OrDivider, SubmitButton } from "@/components/form";
 import { getApiErrorMessage } from "@/lib/api/error";
 import { useAuth } from "@/lib/auth/auth-context";
-import { Field, FormError, SubmitButton } from "@/components/form";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -27,10 +28,12 @@ export default function RegisterPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Create account</h1>
-        <p className="mt-1 text-sm text-zinc-500">
-          Start chatting in seconds.
+      <div className="flex flex-col gap-1.5">
+        <h2 className="font-display text-3xl font-extrabold tracking-tight">
+          Make your account
+        </h2>
+        <p className="text-sm text-muted">
+          Start a group and bring your people in.
         </p>
       </div>
 
@@ -68,25 +71,24 @@ export default function RegisterPage() {
           type="password"
           autoComplete="new-password"
           required
-          // Mirrors the backend RegisterDto: 8–128 chars. Client-side validation is a UX
-          // convenience; the backend is the real enforcement.
           minLength={8}
           maxLength={128}
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           disabled={mutation.isPending}
         />
-
         <FormError
           message={mutation.isError ? getApiErrorMessage(mutation.error) : null}
         />
-
         <SubmitButton pending={mutation.isPending}>Create account</SubmitButton>
       </form>
 
-      <p className="text-center text-sm text-zinc-500">
+      <OrDivider />
+      <GoogleButton />
+
+      <p className="text-center text-sm text-muted">
         Already have an account?{" "}
-        <Link href="/login" className="font-medium text-zinc-900 underline dark:text-zinc-100">
+        <Link href="/login" className="font-medium text-brand-strong hover:underline">
           Sign in
         </Link>
       </p>

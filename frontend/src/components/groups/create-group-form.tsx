@@ -5,10 +5,7 @@ import { useState } from "react";
 import { getApiErrorMessage } from "@/lib/api/error";
 import { useCreateGroup } from "@/lib/queries/groups";
 
-/**
- * Inline "create a group" form. On success the create hook invalidates the groups list, so the
- * new group appears without any manual list update here.
- */
+/** Inline "create a group" form. On success the hook refetches the list, so the group appears. */
 export function CreateGroupForm() {
   const [name, setName] = useState("");
   const createGroup = useCreateGroup();
@@ -26,23 +23,23 @@ export function CreateGroupForm() {
       <div className="flex gap-2">
         <input
           aria-label="New group name"
-          placeholder="New group name"
+          placeholder="Name a new group…"
           maxLength={80}
           value={name}
           onChange={(e) => setName(e.target.value)}
           disabled={createGroup.isPending}
-          className="flex-1 rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200 disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-900 dark:focus:ring-zinc-800"
+          className="flex-1 rounded-xl border border-line bg-surface px-3.5 py-2.5 text-sm outline-none transition placeholder:text-muted/70 focus:border-brand focus:ring-2 focus:ring-brand/25 disabled:opacity-60"
         />
         <button
           type="submit"
           disabled={createGroup.isPending || !name.trim()}
-          className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200"
+          className="shrink-0 rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-on-brand transition hover:bg-brand-strong disabled:cursor-not-allowed disabled:opacity-60"
         >
           {createGroup.isPending ? "Creating…" : "Create"}
         </button>
       </div>
       {createGroup.isError && (
-        <p role="alert" className="text-sm text-red-600 dark:text-red-400">
+        <p role="alert" className="text-sm text-brand-strong">
           {getApiErrorMessage(createGroup.error)}
         </p>
       )}

@@ -7,16 +7,15 @@ import { useState } from "react";
 import { AppHeader } from "@/components/app-header";
 import { MessageComposer } from "@/components/messages/message-composer";
 import { MessageList } from "@/components/messages/message-list";
+import { Avatar } from "@/components/ui/avatar";
 import { getApiErrorMessage } from "@/lib/api/error";
 import { useRequireAuth } from "@/lib/auth/use-require-auth";
 import { useGroup } from "@/lib/queries/groups";
 
 /**
- * A group's chat view: a compact header (name, member count, copyable group id for inviting via
- * the open-join model), the scrollable message history, and the composer.
- *
- * A non-member gets the backend's 403, surfaced as a clear message — the membership guard, made
- * visible, rather than a blank screen.
+ * A group's chat view: a compact header (name, member count, a Live pill, and a copyable invite
+ * id), the scrollable history, and the composer. A non-member gets the backend's 403 as a clear
+ * message — the membership guard, made visible.
  */
 export default function GroupPage() {
   const status = useRequireAuth();
@@ -35,7 +34,7 @@ export default function GroupPage() {
   if (status !== "authenticated") {
     return (
       <main className="flex min-h-full flex-1 items-center justify-center">
-        <p className="text-sm text-zinc-500">Loading…</p>
+        <p className="text-sm text-muted">Loading…</p>
       </main>
     );
   }
@@ -45,49 +44,51 @@ export default function GroupPage() {
       <AppHeader />
 
       <div className="mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col px-4">
-        <div className="flex flex-col gap-2 py-4">
+        <div className="flex flex-col gap-3 py-4">
           <Link
             href="/"
-            className="text-sm text-zinc-500 transition hover:text-zinc-900 dark:hover:text-zinc-100"
+            className="w-fit font-mono text-xs uppercase tracking-wide text-muted transition hover:text-ink"
           >
             ← All groups
           </Link>
 
           {isError && (
-            <p role="alert" className="text-sm text-red-600 dark:text-red-400">
+            <p role="alert" className="text-sm text-brand-strong">
               {getApiErrorMessage(error, "Couldn't load this group")}
             </p>
           )}
 
           {group && (
-            <div className="flex flex-wrap items-baseline justify-between gap-2">
-              <div>
-                <h1 className="text-xl font-semibold tracking-tight">
-                  {group.name}
-                </h1>
-                <p className="flex items-center gap-2 text-sm text-zinc-500">
-                  <span>
-                    {group.members.length} member
-                    {group.members.length === 1 ? "" : "s"}
-                  </span>
-                  <span className="flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400">
-                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                    Live · updates every 10s
-                  </span>
-                </p>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <Avatar name={group.name} id={group.id} size={40} />
+                <div>
+                  <h1 className="font-display text-xl font-extrabold tracking-tight">
+                    {group.name}
+                  </h1>
+                  <p className="flex items-center gap-2 text-sm text-muted">
+                    <span>
+                      {group.members.length} member
+                      {group.members.length === 1 ? "" : "s"}
+                    </span>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-live/12 px-2 py-0.5 font-mono text-[11px] uppercase tracking-wide text-live">
+                      <span className="h-1.5 w-1.5 rounded-full bg-live" />
+                      Live · 10s
+                    </span>
+                  </p>
+                </div>
               </div>
               <button
                 onClick={copyId}
-                title="Copy group id — share it so others can join"
-                className="rounded-md border border-zinc-300 px-2 py-1 text-xs text-zinc-500 transition hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
+                title="Copy the invite id — share it so others can join"
+                className="rounded-full border border-line px-3 py-1.5 font-mono text-xs uppercase tracking-wide text-muted transition hover:border-line-strong hover:text-ink"
               >
-                {copied ? "Copied!" : "Copy group id"}
+                {copied ? "Copied ✓" : "Copy invite id"}
               </button>
             </div>
           )}
         </div>
 
-        {/* The message area and composer only make sense once the group (hence membership) loads. */}
         {group && (
           <>
             <MessageList groupId={groupId} />
@@ -97,7 +98,7 @@ export default function GroupPage() {
 
         {isLoading && (
           <div className="flex flex-1 items-center justify-center">
-            <p className="text-sm text-zinc-500">Loading group…</p>
+            <p className="text-sm text-muted">Loading group…</p>
           </div>
         )}
       </div>

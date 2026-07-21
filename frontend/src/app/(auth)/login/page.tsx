@@ -5,9 +5,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
+import { GoogleButton } from "@/components/auth/google-button";
+import { Field, FormError, OrDivider, SubmitButton } from "@/components/form";
 import { getApiErrorMessage } from "@/lib/api/error";
 import { useAuth } from "@/lib/auth/auth-context";
-import { Field, FormError, SubmitButton } from "@/components/form";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -15,12 +16,10 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
-  // Already signed in? Don't show the login form — send them to the app.
   useEffect(() => {
     if (status === "authenticated") router.replace("/");
   }, [status, router]);
 
-  // useMutation gives us isPending and error state for free — the data layer we already set up.
   const mutation = useMutation({
     mutationFn: () => login(email, password),
     onSuccess: () => router.replace("/"),
@@ -28,9 +27,11 @@ export default function LoginPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Welcome back</h1>
-        <p className="mt-1 text-sm text-zinc-500">Sign in to your account.</p>
+      <div className="flex flex-col gap-1.5">
+        <h2 className="font-display text-3xl font-extrabold tracking-tight">
+          Welcome back
+        </h2>
+        <p className="text-sm text-muted">Sign in and rejoin the conversation.</p>
       </div>
 
       <form
@@ -60,18 +61,19 @@ export default function LoginPage() {
           onChange={(e) => setPassword(e.target.value)}
           disabled={mutation.isPending}
         />
-
         <FormError
           message={mutation.isError ? getApiErrorMessage(mutation.error) : null}
         />
-
         <SubmitButton pending={mutation.isPending}>Sign in</SubmitButton>
       </form>
 
-      <p className="text-center text-sm text-zinc-500">
-        No account?{" "}
-        <Link href="/register" className="font-medium text-zinc-900 underline dark:text-zinc-100">
-          Create one
+      <OrDivider />
+      <GoogleButton />
+
+      <p className="text-center text-sm text-muted">
+        New here?{" "}
+        <Link href="/register" className="font-medium text-brand-strong hover:underline">
+          Create an account
         </Link>
       </p>
     </div>

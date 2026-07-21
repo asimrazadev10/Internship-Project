@@ -5,11 +5,7 @@ import { useState } from "react";
 import { getApiErrorMessage } from "@/lib/api/error";
 import { useSendMessage } from "@/lib/queries/messages";
 
-/**
- * Message input. Enter sends; Shift+Enter inserts a newline. The textarea is capped at the same
- * 4000 chars as the backend CreateMessageDto so the client can't compose something the API will
- * reject.
- */
+/** Message input. Enter sends; Shift+Enter newlines. Capped at 4000 like the backend DTO. */
 export function MessageComposer({ groupId }: { groupId: string }) {
   const [content, setContent] = useState("");
   const sendMessage = useSendMessage(groupId);
@@ -21,14 +17,14 @@ export function MessageComposer({ groupId }: { groupId: string }) {
   }
 
   return (
-    <div className="border-t border-zinc-200 py-3 dark:border-zinc-800">
+    <div className="border-t border-line py-3">
       {sendMessage.isError && (
-        <p role="alert" className="mb-2 text-sm text-red-600 dark:text-red-400">
+        <p role="alert" className="mb-2 text-sm text-brand-strong">
           {getApiErrorMessage(sendMessage.error, "Couldn't send message")}
         </p>
       )}
       <form
-        className="flex items-end gap-2"
+        className="flex items-end gap-2 rounded-2xl border border-line bg-surface p-1.5 shadow-sm transition focus-within:border-brand focus-within:ring-2 focus-within:ring-brand/25"
         onSubmit={(e) => {
           e.preventDefault();
           submit();
@@ -36,7 +32,7 @@ export function MessageComposer({ groupId }: { groupId: string }) {
       >
         <textarea
           aria-label="Message"
-          placeholder="Type a message…"
+          placeholder="Write a message…"
           rows={1}
           maxLength={4000}
           value={content}
@@ -47,12 +43,12 @@ export function MessageComposer({ groupId }: { groupId: string }) {
               submit();
             }
           }}
-          className="max-h-32 flex-1 resize-none rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200 dark:border-zinc-700 dark:bg-zinc-900 dark:focus:ring-zinc-800"
+          className="max-h-32 flex-1 resize-none bg-transparent px-2.5 py-1.5 text-sm text-ink outline-none placeholder:text-muted/70"
         />
         <button
           type="submit"
           disabled={sendMessage.isPending || !content.trim()}
-          className="rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200"
+          className="shrink-0 rounded-xl bg-brand px-4 py-2 text-sm font-semibold text-on-brand transition hover:bg-brand-strong disabled:cursor-not-allowed disabled:opacity-60"
         >
           Send
         </button>

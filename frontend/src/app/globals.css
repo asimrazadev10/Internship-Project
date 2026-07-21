@@ -1,26 +1,79 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/*
+ * "Hearth" — a warm room where people talk.
+ * Warm paper/charcoal neutrals, a persimmon-coral brand, green reserved for presence.
+ * Light is the default; dark follows the OS preference. Semantic tokens only — components
+ * never hardcode a hex.
+ */
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+:root {
+  --canvas: #f6f2eb;
+  --surface: #ffffff;
+  --surface-2: #efe9df;
+  --line: #e7dfd2;
+  --line-strong: #d8cdbb;
+  --ink: #221f1b;
+  --muted: #837a6c;
+  --brand: #e15b4c;
+  --brand-strong: #cb4635;
+  --brand-soft: #fbe7e2;
+  --on-brand: #2a1712;
+  --live: #2e9e6e;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --canvas: #141110;
+    --surface: #1c1815;
+    --surface-2: #241f1b;
+    --line: #322c27;
+    --line-strong: #423931;
+    --ink: #f1ece4;
+    --muted: #a79c8f;
+    --brand: #ea6857;
+    --brand-strong: #f2806f;
+    --brand-soft: #2c1f1b;
+    --on-brand: #201310;
+    --live: #43b488;
   }
 }
 
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-brand: var(--brand);
+  --color-brand-strong: var(--brand-strong);
+  --color-brand-soft: var(--brand-soft);
+  --color-on-brand: var(--on-brand);
+  --color-live: var(--live);
+
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --font-display: var(--font-display);
+}
+
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--canvas);
+  color: var(--ink);
+  font-family: var(--font-sans), system-ui, sans-serif;
+}
+
+::selection {
+  background: color-mix(in oklab, var(--brand) 28%, transparent);
+}
+
+/* Respect users who prefer less motion. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
 }

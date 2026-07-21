@@ -6,9 +6,8 @@ import { getApiErrorMessage } from "@/lib/api/error";
 import { useJoinGroup } from "@/lib/queries/groups";
 
 /**
- * Join a group by pasting its id. Open-join model: any authenticated user holding a group's
- * (unguessable) id may join, so the id is effectively the invite. Backend returns 409 if already
- * a member and 404 if the id doesn't exist — both surfaced here.
+ * Join a group by pasting its id. Open-join: anyone with a group's (unguessable) id can join, so
+ * the id is effectively the invite. 409 if already a member, 404 if it doesn't exist.
  */
 export function JoinGroupForm() {
   const [groupId, setGroupId] = useState("");
@@ -27,22 +26,22 @@ export function JoinGroupForm() {
       <div className="flex gap-2">
         <input
           aria-label="Group id to join"
-          placeholder="Paste a group id to join"
+          placeholder="Paste an invite id to join…"
           value={groupId}
           onChange={(e) => setGroupId(e.target.value)}
           disabled={joinGroup.isPending}
-          className="flex-1 rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm outline-none focus:border-zinc-500 focus:ring-2 focus:ring-zinc-200 disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-900 dark:focus:ring-zinc-800"
+          className="flex-1 rounded-xl border border-line bg-surface px-3.5 py-2.5 font-mono text-sm outline-none transition placeholder:font-sans placeholder:text-muted/70 focus:border-brand focus:ring-2 focus:ring-brand/25 disabled:opacity-60"
         />
         <button
           type="submit"
           disabled={joinGroup.isPending || !groupId.trim()}
-          className="rounded-md border border-zinc-300 px-4 py-2 text-sm font-medium transition hover:bg-zinc-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-zinc-700 dark:hover:bg-zinc-800"
+          className="shrink-0 rounded-xl border border-line-strong px-4 py-2.5 text-sm font-semibold text-ink transition hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {joinGroup.isPending ? "Joining…" : "Join"}
         </button>
       </div>
       {joinGroup.isError && (
-        <p role="alert" className="text-sm text-red-600 dark:text-red-400">
+        <p role="alert" className="text-sm text-brand-strong">
           {getApiErrorMessage(joinGroup.error)}
         </p>
       )}

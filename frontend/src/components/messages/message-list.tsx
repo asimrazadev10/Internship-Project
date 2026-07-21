@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 
+import { Avatar } from "@/components/ui/avatar";
 import { getApiErrorMessage } from "@/lib/api/error";
 import type { Message } from "@/lib/api/types";
 import { useAuth } from "@/lib/auth/auth-context";
@@ -14,30 +15,35 @@ function formatTime(iso: string): string {
   });
 }
 
-function MessageBubble({ message, isOwn }: { message: Message; isOwn: boolean }) {
-  // System / AI messages have no human sender — render them centred and muted.
+function MessageRow({ message, isOwn }: { message: Message; isOwn: boolean }) {
+  // System / AI messages have no human sender — centred and quiet.
   if (message.senderId === null) {
     return (
-      <li className="mx-auto max-w-[80%] rounded-md bg-zinc-100 px-3 py-2 text-center text-xs text-zinc-500 dark:bg-zinc-800/60">
+      <li className="mx-auto max-w-[80%] rounded-full bg-surface-2 px-3.5 py-1.5 text-center text-xs text-muted">
         {message.content}
       </li>
     );
   }
 
+  const senderName = message.sender?.name ?? "Someone";
+
   return (
-    <li className={`flex flex-col gap-0.5 ${isOwn ? "items-end" : "items-start"}`}>
-      <div className="flex items-baseline gap-2 text-xs text-zinc-500">
-        {!isOwn && <span className="font-medium">{message.sender?.name}</span>}
-        <span>{formatTime(message.createdAt)}</span>
-      </div>
-      <div
-        className={`max-w-[80%] whitespace-pre-wrap break-words rounded-2xl px-3 py-2 text-sm ${
-          isOwn
-            ? "bg-zinc-900 text-white dark:bg-white dark:text-zinc-900"
-            : "bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100"
-        }`}
-      >
-        {message.content}
+    <li className={`flex items-end gap-2.5 ${isOwn ? "flex-row-reverse" : ""}`}>
+      {!isOwn && <Avatar name={senderName} id={message.senderId} size={30} />}
+      <div className={`flex max-w-[78%] flex-col gap-0.5 ${isOwn ? "items-end" : "items-start"}`}>
+        <div className="flex items-baseline gap-2 px-1 font-mono text-[11px] text-muted">
+          {!isOwn && <span className="uppercase tracking-wide">{senderName}</span>}
+          <span>{formatTime(message.createdAt)}</span>
+        </div>
+        <div
+          className={`whitespace-pre-wrap break-words rounded-2xl px-3.5 py-2 text-sm shadow-sm ${
+            isOwn
+              ? "rounded-br-md bg-brand text-on-brand"
+              : "rounded-bl-md bg-surface text-ink"
+          }`}
+        >
+          {message.content}
+        </div>
       </div>
     </li>
   );
@@ -57,9 +63,8 @@ export function MessageList({ groupId }: { groupId: string }) {
 
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  // Scroll to the bottom when the NEWEST message changes — on first load and when a message
-  // arrives (sent or polled in). Keyed on the last message's id, not the count, so loading OLDER
-  // history (which prepends) does not yank the view back down.
+  // Scroll to the bottom when the NEWEST message changes — on first load and when one arrives
+  // (sent or polled in). Keyed on the last id, so loading OLDER history doesn't yank the view.
   const newestId = messages[messages.length - 1]?.id;
   useEffect(() => {
     bottomRef.current?.scrollIntoView();
@@ -68,7 +73,7 @@ export function MessageList({ groupId }: { groupId: string }) {
   if (isLoading) {
     return (
       <div className="flex flex-1 items-center justify-center">
-        <p className="text-sm text-zinc-500">Loading messages…</p>
+        <p className="text-sm text-muted">Loading messages…</p>
       </div>
     );
   }
@@ -76,7 +81,7 @@ export function MessageList({ groupId }: { groupId: string }) {
   if (isError) {
     return (
       <div className="flex flex-1 items-center justify-center">
-        <p role="alert" className="text-sm text-red-600 dark:text-red-400">
+        <p role="alert" className="text-sm text-brand-strong">
           {getApiErrorMessage(error, "Couldn't load messages")}
         </p>
       </div>
@@ -85,25 +90,25 @@ export function MessageList({ groupId }: { groupId: string }) {
 
   return (
     <div className="flex-1 overflow-y-auto">
-      <div className="flex flex-col gap-3 px-1 py-4">
+      <div className="flex flex-col gap-3.5 px-1 py-4">
         {hasOlder && (
           <button
             onClick={() => void loadOlder()}
             disabled={isLoadingOlder}
-            className="mx-auto rounded-full border border-zinc-300 px-3 py-1 text-xs text-zinc-500 transition hover:bg-zinc-100 disabled:opacity-60 dark:border-zinc-700 dark:hover:bg-zinc-800"
+            className="mx-auto rounded-full border border-line px-3 py-1 font-mono text-xs uppercase tracking-wide text-muted transition hover:border-line-strong hover:text-ink disabled:opacity-60"
           >
-            {isLoadingOlder ? "Loading…" : "Load older messages"}
+            {isLoadingOlder ? "Loading…" : "Load older"}
           </button>
         )}
 
         {messages.length === 0 ? (
-          <p className="py-8 text-center text-sm text-zinc-500">
+          <p className="py-10 text-center text-sm text-muted">
             No messages yet. Say hello.
           </p>
         ) : (
-          <ul className="flex flex-col gap-3">
+          <ul className="flex flex-col gap-3.5">
             {messages.map((message) => (
-              <MessageBubble
+              <MessageRow
                 key={message.id}
                 message={message}
                 isOwn={message.senderId === user?.id}

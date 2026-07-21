@@ -1,6 +1,10 @@
+import { AuthHero } from "@/components/auth/auth-hero";
+import { Logo } from "@/components/ui/logo";
+
 /**
- * Layout for the auth route group ((auth) is a grouping folder — it does not appear in the URL,
- * so the pages are still /login and /register). Centres the auth card on the page.
+ * Auth route group ((auth) does not appear in the URL — pages stay /login and /register).
+ * Split layout: the conversation vignette on the left (desktop), the form on the right. On
+ * smaller screens the vignette is dropped and a compact wordmark leads the form.
  */
 export default function AuthLayout({
   children,
@@ -8,8 +12,16 @@ export default function AuthLayout({
   children: React.ReactNode;
 }) {
   return (
-    <main className="flex min-h-full flex-1 items-center justify-center px-4 py-12">
-      <div className="w-full max-w-sm">{children}</div>
-    </main>
+    <div className="grid min-h-full flex-1 lg:grid-cols-[1.1fr_1fr]">
+      <AuthHero />
+      <main className="flex items-center justify-center px-5 py-12">
+        <div className="flex w-full max-w-sm flex-col gap-8">
+          <div className="lg:hidden">
+            <Logo />
+          </div>
+          {children}
+        </div>
+      </main>
+    </div>
   );
 }
