@@ -1,4 +1,4 @@
-import { Logger } from '@nestjs/common';
+import { ForbiddenException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { OnEvent } from '@nestjs/event-emitter';
 import { JwtService } from '@nestjs/jwt';
@@ -25,7 +25,9 @@ import type { AuthData, AuthedSocket } from './ws.types';
 /**
  * Real-time chat gateway. Authenticates the handshake JWT and (later tasks) manages one room
  * per group and broadcasts new messages. CORS is set because the browser connects directly to
- * this server (WebSockets don't traverse the Next proxy).
+ * this server (WebSockets don't traverse the Next proxy). CORS itself is sourced from validated
+ * config in RedisIoAdapter (see redis-io.adapter.ts), not here — the decorator below evaluates at
+ * import time, before ConfigModule has loaded .env, so a value set here would be stale.
  *
  * Auth runs as Socket.IO handshake middleware (registered in `afterInit`), NOT inside
  * `handleConnection`. Socket.IO's namespace sends the CONNECT ack to the client (which fires the
@@ -38,9 +40,7 @@ import type { AuthData, AuthedSocket } from './ws.types';
  * CONNECT_ERROR packet instead, which is what surfaces as `connect_error` on the client and
  * guarantees an unauthenticated socket never completes the connection at all.
  */
-@WebSocketGateway({
-  cors: { origin: process.env.SOCKET_CORS_ORIGIN ?? 'http://localhost:3001' },
-})
+@WebSocketGateway()
 export class ChatGateway
   implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect
 {
@@ -107,8 +107,15 @@ export class ChatGateway
         `socket ${socket.id} (user ${userId}) joined ${roomFor(groupId)}`,
       );
       return { ok: true };
-    } catch {
-      return { ok: false, error: 'You are not a member of this group' };
+    } catch (err) {
+      if (err instanceof ForbiddenException) {
+        return { ok: false, error: 'You are not a member of this group' };
+      }
+      this.logger.error(
+        'joinGroup failed',
+        err instanceof Error ? err.stack : String(err),
+      );
+      return { ok: false, error: 'Something went wrong' };
     }
   }
 
@@ -142,11 +149,18 @@ export class ChatGateway
     }
     try {
       await this.groups.assertMember(userId, groupId);
-    } catch {
-      return {
-        ok: false as const,
-        error: 'You are not a member of this group',
-      };
+    } catch (err) {
+      if (err instanceof ForbiddenException) {
+        return {
+          ok: false as const,
+          error: 'You are not a member of this group',
+        };
+      }
+      this.logger.error(
+        'sendMessage failed',
+        err instanceof Error ? err.stack : String(err),
+      );
+      return { ok: false as const, error: 'Something went wrong' };
     }
     const message = await this.messages.create(groupId, userId, content);
     return { ok: true as const, message };

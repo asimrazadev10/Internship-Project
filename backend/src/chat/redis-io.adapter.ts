@@ -12,6 +12,7 @@ import { ServerOptions } from 'socket.io';
  */
 export class RedisIoAdapter extends IoAdapter {
   private adapterConstructor?: ReturnType<typeof createAdapter>;
+  private corsOrigin?: string;
 
   constructor(app: INestApplicationContext) {
     super(app);
@@ -26,10 +27,14 @@ export class RedisIoAdapter extends IoAdapter {
     const pub = new Redis(opts);
     const sub = pub.duplicate();
     this.adapterConstructor = createAdapter(pub, sub);
+    this.corsOrigin = config.getOrThrow<string>('SOCKET_CORS_ORIGIN');
   }
 
   createIOServer(port: number, options?: ServerOptions): unknown {
-    const server = super.createIOServer(port, options) as {
+    const server = super.createIOServer(port, {
+      ...options,
+      cors: { origin: this.corsOrigin },
+    }) as {
       adapter: (a: unknown) => void;
     };
     if (this.adapterConstructor) server.adapter(this.adapterConstructor);

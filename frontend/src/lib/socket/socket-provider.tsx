@@ -28,7 +28,8 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
 
     const nextSocket = io(SOCKET_URL, {
       transports: ["websocket"],
-      auth: { token: tokenStore.access },
+      auth: (cb: (data: { token: string | null }) => void) =>
+        cb({ token: tokenStore.access }),
       reconnection: true,
     });
 
