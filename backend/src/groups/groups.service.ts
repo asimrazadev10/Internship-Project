@@ -1,11 +1,13 @@
 import {
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { Group, MemberRole, Prisma } from '@prisma/client';
 
 import { PrismaService } from '../prisma/prisma.service';
+import { isUuid } from '../common/utils/uuid';
 
 /**
  * Group persistence and membership writes. The membership authorization rule lives in
@@ -109,5 +111,21 @@ export class GroupsService {
     }
 
     return group;
+  }
+
+  /**
+   * The single membership rule, shared by HTTP (GroupMemberGuard) and WS (ChatGateway).
+   * Same response for a missing group and a non-member — doesn't leak which groups exist.
+   */
+  async assertMember(userId: string, groupId: string): Promise<void> {
+    if (!isUuid(groupId)) {
+      throw new ForbiddenException('You are not a member of this group');
+    }
+    const membership = await this.prisma.groupMember.findUnique({
+      where: { groupId_userId: { groupId, userId } },
+    });
+    if (!membership) {
+      throw new ForbiddenException('You are not a member of this group');
+    }
   }
 }
