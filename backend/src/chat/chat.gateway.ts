@@ -2,16 +2,21 @@ import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import {
+  ConnectedSocket,
+  MessageBody,
   OnGatewayConnection,
   OnGatewayDisconnect,
   OnGatewayInit,
+  SubscribeMessage,
   WebSocketGateway,
   WebSocketServer,
 } from '@nestjs/websockets';
 import { Server } from 'socket.io';
 
 import { JwtPayload } from '../auth/interfaces/auth.types';
-import { AuthData, AuthedSocket } from './ws.types';
+import { GroupsService } from '../groups/groups.service';
+import { roomFor } from './chat.constants';
+import type { AuthData, AuthedSocket } from './ws.types';
 
 /**
  * Real-time chat gateway. Authenticates the handshake JWT and (later tasks) manages one room
@@ -42,6 +47,7 @@ export class ChatGateway
   constructor(
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
+    private readonly groups: GroupsService,
   ) {}
 
   afterInit(server: Server): void {
@@ -74,5 +80,42 @@ export class ChatGateway
   handleDisconnect(socket: AuthedSocket): void {
     // Socket.IO auto-leaves rooms on disconnect; nothing to clean up yet.
     this.logger.debug(`socket ${socket.id} disconnected`);
+  }
+
+  /**
+   * Membership is re-checked here (not just trusted from handshake auth) because the handshake
+   * only proves who the user is, not which groups they may currently read/write — that can
+   * change after connection. Same rule as the HTTP GroupMemberGuard, via the shared
+   * GroupsService.assertMember.
+   */
+  @SubscribeMessage('join_group')
+  async joinGroup(
+    @ConnectedSocket() socket: AuthedSocket,
+    @MessageBody() body: { groupId?: string },
+  ): Promise<{ ok: true } | { ok: false; error: string }> {
+    const { userId } = socket.data as AuthData;
+    const groupId = body?.groupId ?? '';
+    try {
+      await this.groups.assertMember(userId, groupId);
+      await socket.join(roomFor(groupId));
+      this.logger.debug(
+        `socket ${socket.id} (user ${userId}) joined ${roomFor(groupId)}`,
+      );
+      return { ok: true };
+    } catch {
+      return { ok: false, error: 'You are not a member of this group' };
+    }
+  }
+
+  @SubscribeMessage('leave_group')
+  async leaveGroup(
+    @ConnectedSocket() socket: AuthedSocket,
+    @MessageBody() body: { groupId?: string },
+  ): Promise<{ ok: true }> {
+    if (body?.groupId) {
+      await socket.leave(roomFor(body.groupId));
+      this.logger.debug(`socket ${socket.id} left ${roomFor(body.groupId)}`);
+    }
+    return { ok: true };
   }
 }
