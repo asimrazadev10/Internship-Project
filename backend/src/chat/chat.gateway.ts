@@ -1,5 +1,6 @@
 import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { OnEvent } from '@nestjs/event-emitter';
 import { JwtService } from '@nestjs/jwt';
 import {
   ConnectedSocket,
@@ -15,6 +16,9 @@ import { Server } from 'socket.io';
 
 import { JwtPayload } from '../auth/interfaces/auth.types';
 import { GroupsService } from '../groups/groups.service';
+import { MESSAGE_CREATED } from '../messages/message-events';
+import type { MessageCreatedPayload } from '../messages/message-events';
+import { MessagesService } from '../messages/messages.service';
 import { roomFor } from './chat.constants';
 import type { AuthData, AuthedSocket } from './ws.types';
 
@@ -48,6 +52,7 @@ export class ChatGateway
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
     private readonly groups: GroupsService,
+    private readonly messages: MessagesService,
   ) {}
 
   afterInit(server: Server): void {
@@ -117,5 +122,45 @@ export class ChatGateway
       this.logger.debug(`socket ${socket.id} left ${roomFor(body.groupId)}`);
     }
     return { ok: true };
+  }
+
+  /**
+   * Persist-then-broadcast: this handler only writes the row (via MessagesService.create, which
+   * emits MESSAGE_CREATED). It never touches `server` directly — the @OnEvent handler below is
+   * the single broadcast point, so a socket send and a REST POST end up on the exact same path.
+   */
+  @SubscribeMessage('send_message')
+  async sendMessage(
+    @ConnectedSocket() socket: AuthedSocket,
+    @MessageBody() body: { groupId?: string; content?: string },
+  ) {
+    const { userId } = socket.data as AuthData;
+    const groupId = body?.groupId ?? '';
+    const content = (body?.content ?? '').trim();
+    if (!content || content.length > 4000) {
+      return { ok: false as const, error: 'Message must be 1–4000 characters' };
+    }
+    try {
+      await this.groups.assertMember(userId, groupId);
+    } catch {
+      return {
+        ok: false as const,
+        error: 'You are not a member of this group',
+      };
+    }
+    const message = await this.messages.create(groupId, userId, content);
+    return { ok: true as const, message };
+  }
+
+  /**
+   * The single broadcast point. Fires for socket sends, the REST POST, and Phase 4 AI messages —
+   * every path that persists a message. `server.to(room)` reaches all members including the
+   * sender, so the sender's own message arrives through the same broadcast, not a separate echo.
+   */
+  @OnEvent(MESSAGE_CREATED)
+  broadcastMessage(payload: MessageCreatedPayload): void {
+    this.server
+      .to(roomFor(payload.message.groupId))
+      .emit('new_message', payload.message);
   }
 }
