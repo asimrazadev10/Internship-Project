@@ -1,9 +1,11 @@
 import { Injectable } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { MessageType } from '@prisma/client';
 
 import { PaginationMeta } from '../common/http/api-response';
 import { decodeCursor, encodeCursor } from '../common/utils/cursor';
 import { PrismaService } from '../prisma/prisma.service';
+import { MESSAGE_CREATED, MessageCreatedPayload } from './message-events';
 
 /**
  * Message reads and writes. Membership authorization is enforced by GroupMemberGuard at the
@@ -24,13 +26,19 @@ const MESSAGE_SELECT = {
 
 @Injectable()
 export class MessagesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly events: EventEmitter2,
+  ) {}
 
-  create(groupId: string, senderId: string, content: string) {
-    return this.prisma.message.create({
+  async create(groupId: string, senderId: string, content: string) {
+    const message = await this.prisma.message.create({
       data: { groupId, senderId, content, type: MessageType.USER },
       select: MESSAGE_SELECT,
     });
+    // Persist-then-broadcast: the row exists before anyone is told about it.
+    this.events.emit(MESSAGE_CREATED, { message } satisfies MessageCreatedPayload);
+    return message;
   }
 
   /**

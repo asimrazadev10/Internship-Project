@@ -11,5 +11,6 @@ import { MessagesService } from './messages.service';
 @Module({
   controllers: [MessagesController],
   providers: [MessagesService, GroupMemberGuard],
+  exports: [MessagesService],
 })
 export class MessagesModule {}
