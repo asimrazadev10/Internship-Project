@@ -1,74 +1,150 @@
 @import "tailwindcss";
 
 /*
- * "Hearth" — a warm room where people talk.
- * Warm paper/charcoal neutrals, a persimmon-coral brand, green reserved for presence.
- * Light is the default; dark follows the OS preference. Semantic tokens only — components
- * never hardcode a hex.
+ * Convo — "Aurora" theme. Cool jewel tones, dark-first.
+ *
+ * The signature look is the DARK palette (applied via prefers-color-scheme: dark below); a clean
+ * light variant is the default for OS light mode. Both share the indigo primary (#6366F1) and a
+ * cyan accent. The earlier design's component classes (bg-canvas, text-ink, bg-brand, border-line,
+ * text-muted, bg-live, …) are ALIASED to semantic tokens in the @theme block, so the whole UI
+ * adopts the theme with no per-component edits.
+ *
+ * --aurora-violet / --aurora-cyan drive the northern-lights flourishes (the fixed body glow and
+ * the logo chip gradient). Fonts — Space Grotesk (display), Inter (body), Space Mono
+ * (micro-labels) — are loaded in layout.tsx and referenced here.
  */
 
 :root {
-  --canvas: #f6f2eb;
-  --surface: #ffffff;
-  --surface-2: #efe9df;
-  --line: #e7dfd2;
-  --line-strong: #d8cdbb;
-  --ink: #221f1b;
-  --muted: #837a6c;
-  --brand: #e15b4c;
-  --brand-strong: #cb4635;
-  --brand-soft: #fbe7e2;
-  --on-brand: #2a1712;
-  --live: #2e9e6e;
+  /* Aurora — LIGHT (OS light mode) */
+  --background: #f5f6ff;
+  --foreground: #1a1e3a;
+  --card: #ffffff;
+  --card-foreground: #1a1e3a;
+  --popover: #ffffff;
+  --popover-foreground: #1a1e3a;
+  --primary: #6366f1;
+  --primary-strong: #4f46e5;
+  --primary-foreground: #ffffff;
+  --secondary: #eceefb;
+  --secondary-foreground: #2a2f52;
+  --muted: #eef0fb;
+  --muted-foreground: #5b6390;
+  --accent: #eef0fe;
+  --accent-foreground: #4f46e5;
+  --destructive: #dc2626;
+  --destructive-foreground: #ffffff;
+  --border: #e1e4f5;
+  --border-strong: #c9ceec;
+  --input: #ffffff;
+  --ring: #6366f1;
+  /* Functional presence colour ("Live" dot). */
+  --live: #10b981;
+  /* Northern-lights flourish colours. */
+  --aurora-violet: #7c3aed;
+  --aurora-cyan: #06b6d4;
+  --radius: 0.7rem;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --canvas: #141110;
-    --surface: #1c1815;
-    --surface-2: #241f1b;
-    --line: #322c27;
-    --line-strong: #423931;
-    --ink: #f1ece4;
-    --muted: #a79c8f;
-    --brand: #ea6857;
-    --brand-strong: #f2806f;
-    --brand-soft: #2c1f1b;
-    --on-brand: #201310;
-    --live: #43b488;
+    /* Aurora — DARK (signature) */
+    --background: #0f1226;
+    --foreground: #e7e9f5;
+    --card: #171b34;
+    --card-foreground: #e7e9f5;
+    --popover: #171b34;
+    --popover-foreground: #e7e9f5;
+    --primary: #6366f1;
+    --primary-strong: #818cf8;
+    --primary-foreground: #ffffff;
+    --secondary: #20264a;
+    --secondary-foreground: #c7ccf5;
+    --muted: #1b2040;
+    --muted-foreground: #98a0c8;
+    --accent: #1b2149;
+    --accent-foreground: #c7ccf5;
+    --destructive: #f87171;
+    --destructive-foreground: #0f1226;
+    --border: #272e52;
+    --border-strong: #3b4478;
+    --input: #20264a;
+    --ring: #6366f1;
+    --live: #34d399;
+    --aurora-violet: #7c3aed;
+    --aurora-cyan: #22d3ee;
   }
 }
 
 @theme inline {
-  --color-canvas: var(--canvas);
-  --color-surface: var(--surface);
-  --color-surface-2: var(--surface-2);
-  --color-line: var(--line);
-  --color-line-strong: var(--line-strong);
-  --color-ink: var(--ink);
-  --color-muted: var(--muted);
-  --color-brand: var(--brand);
-  --color-brand-strong: var(--brand-strong);
-  --color-brand-soft: var(--brand-soft);
-  --color-on-brand: var(--on-brand);
-  --color-live: var(--live);
+  /* Theme semantic tokens */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted-token: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
 
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-  --font-display: var(--font-display);
+  /* Aliases — the earlier design's token names mapped onto Aurora */
+  --color-canvas: var(--background);
+  --color-surface: var(--card);
+  --color-surface-2: var(--secondary);
+  --color-ink: var(--foreground);
+  --color-muted: var(--muted-foreground);
+  --color-line: var(--border);
+  --color-line-strong: var(--border-strong);
+  --color-brand: var(--primary);
+  --color-brand-strong: var(--primary-strong);
+  --color-brand-soft: var(--accent);
+  --color-on-brand: var(--primary-foreground);
+  --color-live: var(--live);
+  --color-aurora-violet: var(--aurora-violet);
+  --color-aurora-cyan: var(--aurora-cyan);
+
+  /* Fonts — loaded in layout.tsx */
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-space-grotesk), var(--font-inter), sans-serif;
+  --font-mono: var(--font-space-mono), ui-monospace, "Courier New", monospace;
+
+  --radius: var(--radius);
 }
 
 body {
-  background: var(--canvas);
-  color: var(--ink);
-  font-family: var(--font-sans), system-ui, sans-serif;
+  background-color: var(--background);
+  /* Fixed northern-lights glow behind everything: violet from top-left, cyan from top-right. */
+  background-image:
+    radial-gradient(
+      55rem 55rem at 12% -12%,
+      color-mix(in oklab, var(--aurora-violet) 20%, transparent),
+      transparent 60%
+    ),
+    radial-gradient(
+      45rem 45rem at 100% 6%,
+      color-mix(in oklab, var(--aurora-cyan) 15%, transparent),
+      transparent 55%
+    );
+  background-attachment: fixed;
+  background-repeat: no-repeat;
+  color: var(--foreground);
+  font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
 }
 
 ::selection {
-  background: color-mix(in oklab, var(--brand) 28%, transparent);
+  background: color-mix(in oklab, var(--primary) 35%, transparent);
 }
 
-/* Respect users who prefer less motion. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

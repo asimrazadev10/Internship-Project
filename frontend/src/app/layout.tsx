@@ -1,28 +1,29 @@
 import type { Metadata } from "next";
-import { Bricolage_Grotesque, Geist, Geist_Mono } from "next/font/google";
+import { Space_Grotesk, Inter, Space_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+// Aurora type system:
+//   Space Grotesk — display / wordmark / headings
+//   Inter         — body copy
+//   Space Mono    — micro-labels, timestamps (pairs with Space Grotesk by design)
+const spaceGrotesk = Space_Grotesk({
+  variable: "--font-space-grotesk",
   subsets: ["latin"],
 });
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+const inter = Inter({
+  variable: "--font-inter",
   subsets: ["latin"],
 });
-
-// Characterful display face — used with restraint for the wordmark and headings.
-const bricolage = Bricolage_Grotesque({
-  variable: "--font-display",
+const spaceMono = Space_Mono({
+  variable: "--font-space-mono",
   subsets: ["latin"],
-  weight: ["600", "700", "800"],
+  weight: ["400", "700"],
 });
 
 export const metadata: Metadata = {
-  title: "Hearth — group chat",
-  description: "A warm place for your group conversations.",
+  title: "Convo",
+  description: "Real-time group chat.",
 };
 
 export default function RootLayout({
@@ -33,7 +34,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} ${bricolage.variable} h-full antialiased`}
+      className={`${spaceGrotesk.variable} ${inter.variable} ${spaceMono.variable} h-full antialiased`}
     >
       <body className="flex min-h-full flex-col">
         <Providers>{children}</Providers>

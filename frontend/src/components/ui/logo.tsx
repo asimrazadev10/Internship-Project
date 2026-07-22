@@ -1,6 +1,7 @@
 /**
- * Wordmark: a warm chip holding two overlapping speech dots (a conversation), beside the name
- * set in the display face. The mark is the one small flourish; everything else stays quiet.
+ * Wordmark: an aurora-gradient chip (indigo → cyan) holding two overlapping speech dots (a
+ * conversation), beside the name set in the display face. The mark is the one small flourish;
+ * everything else stays quiet.
  */
 export function Logo({ size = "md" }: { size?: "md" | "lg" }) {
   const chip = size === "lg" ? "h-9 w-9" : "h-7 w-7";
@@ -8,7 +9,7 @@ export function Logo({ size = "md" }: { size?: "md" | "lg" }) {
   return (
     <span className="flex items-center gap-2.5">
       <span
-        className={`grid ${chip} place-items-center rounded-[10px] bg-brand text-on-brand`}
+        className={`grid ${chip} place-items-center rounded-[10px] text-on-brand shadow-sm bg-[image:linear-gradient(135deg,var(--primary),var(--aurora-cyan))]`}
       >
         <svg viewBox="0 0 24 24" className="h-1/2 w-1/2" fill="currentColor" aria-hidden>
           <circle cx="9" cy="10" r="4.5" opacity="0.55" />
@@ -16,7 +17,7 @@ export function Logo({ size = "md" }: { size?: "md" | "lg" }) {
         </svg>
       </span>
       <span className={`font-display font-extrabold tracking-tight ${text}`}>
-        Hearth
+        Convo
       </span>
     </span>
   );
