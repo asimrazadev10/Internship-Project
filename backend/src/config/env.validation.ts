@@ -3,6 +3,7 @@ import {
   IsEnum,
   IsInt,
   IsNotEmpty,
+  IsOptional,
   IsString,
   Max,
   Min,
@@ -82,6 +83,27 @@ export class EnvironmentVariables {
   @IsString()
   @IsNotEmpty({ message: 'GOOGLE_CLIENT_ID is required' })
   GOOGLE_CLIENT_ID!: string;
+
+  // Redis — Socket.IO adapter (Phase 3) and BullMQ (Phase 4).
+  @IsString()
+  @IsNotEmpty({ message: 'REDIS_HOST is required' })
+  REDIS_HOST: string = 'localhost';
+
+  @Type(() => Number)
+  @IsInt({ message: 'REDIS_PORT must be an integer' })
+  @Min(1)
+  @Max(65535)
+  REDIS_PORT = 6379;
+
+  @IsString()
+  @IsOptional()
+  REDIS_PASSWORD?: string;
+
+  // Origin allowed to open a WebSocket to the gateway. The socket connects directly to the
+  // backend (WebSockets don't traverse the Next proxy), so the gateway needs CORS here.
+  @IsString()
+  @IsNotEmpty({ message: 'SOCKET_CORS_ORIGIN is required' })
+  SOCKET_CORS_ORIGIN: string = 'http://localhost:3001';
 }
 
 export function validateEnv(

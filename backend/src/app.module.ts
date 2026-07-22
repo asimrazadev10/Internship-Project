@@ -4,6 +4,7 @@ import {
   ValidationPipe,
 } from '@nestjs/common';
 import { APP_FILTER, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 
 import { AppConfigModule } from './config/config.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
@@ -30,6 +31,7 @@ import { UsersModule } from './users/users.module';
   imports: [
     AppConfigModule,
     PrismaModule,
+    EventEmitterModule.forRoot(),
     UsersModule,
     AuthModule,
     GroupsModule,
