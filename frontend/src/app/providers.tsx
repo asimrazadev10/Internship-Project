@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
 
 import { AuthProvider } from "@/lib/auth/auth-context";
+import { SocketProvider } from "@/lib/socket/socket-provider";
 
 /**
  * App-wide client providers. Marked "use client" because TanStack Query keeps cache state in
@@ -32,7 +33,9 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <AuthProvider>{children}</AuthProvider>
+      <AuthProvider>
+        <SocketProvider>{children}</SocketProvider>
+      </AuthProvider>
     </QueryClientProvider>
   );
 }
