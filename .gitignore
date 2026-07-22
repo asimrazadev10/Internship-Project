@@ -1,6 +1,7 @@
 # Local-only — assignment brief and study material, deliberately kept off the remote
 CLAUDE.md
 docs/
+progress.html
 
 # Dependencies
 node_modules/
@@ -45,3 +46,4 @@ Thumbs.db
 
 # Docker volumes (if ever bind-mounted locally)
 docker-data/
+.superpowers/
