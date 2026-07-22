@@ -1,7 +1,7 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { createContext, useContext, useEffect, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import { io, type Socket } from "socket.io-client";
 
 import { tokenStore } from "@/lib/api/tokens";
@@ -20,24 +20,29 @@ const SocketContext = createContext<SocketValue>({ socket: null, connected: fals
 export function SocketProvider({ children }: { children: React.ReactNode }) {
   const { status } = useAuth();
   const queryClient = useQueryClient();
-  const socketRef = useRef<Socket | null>(null);
+  const [socket, setSocket] = useState<Socket | null>(null);
   const [connected, setConnected] = useState(false);
 
   useEffect(() => {
     if (status !== "authenticated") return;
 
-    const socket = io(SOCKET_URL, {
+    const nextSocket = io(SOCKET_URL, {
       transports: ["websocket"],
       auth: { token: tokenStore.access },
       reconnection: true,
     });
-    socketRef.current = socket;
 
-    socket.on("connect", () => setConnected(true));
-    socket.on("disconnect", () => setConnected(false));
+    // Publish the instance once it's actually usable, inside the connection-event callback
+    // (not synchronously in the effect body) — keeps `socket`/`connected` in lockstep and avoids
+    // the cascading-render pattern the set-state-in-effect rule flags.
+    nextSocket.on("connect", () => {
+      setSocket(nextSocket);
+      setConnected(true);
+    });
+    nextSocket.on("disconnect", () => setConnected(false));
 
     // The one place socket-pushed messages enter the app. Route by the message's own groupId.
-    socket.on("new_message", (message: Message) => {
+    nextSocket.on("new_message", (message: Message) => {
       queryClient.setQueryData<Message[]>(
         messageKeys.live(message.groupId),
         (old = []) =>
@@ -46,14 +51,14 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     });
 
     return () => {
-      socket.close();
-      socketRef.current = null;
+      nextSocket.close();
+      setSocket(null);
       setConnected(false);
     };
   }, [status, queryClient]);
 
   return (
-    <SocketContext.Provider value={{ socket: socketRef.current, connected }}>
+    <SocketContext.Provider value={{ socket, connected }}>
       {children}
     </SocketContext.Provider>
   );
