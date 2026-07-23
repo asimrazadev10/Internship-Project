@@ -160,6 +160,50 @@ when new messages arrive between page requests and is O(log n) at any depth.
 
 ---
 
+## AI daily summaries (Phase 4)
+
+Every `SUMMARY_INTERVAL_MS` (default 24h), an in-process **BullMQ** scheduler finds groups with
+activity in the last `SUMMARY_WINDOW_MS` and enqueues one `group-summary` job per group — one job
+per group, so a Gemini failure/retry in one group can never block another. Each job fetches that
+window's messages, summarizes them with **Gemini** (via the Vercel AI SDK), and posts the result
+back as a normal message (`type: AI_SUMMARY`, `senderId: null`) through the same `MessagesService`
+path chat messages already use — so it broadcasts live over the Phase 3 socket pipeline with
+**zero new transport code**.
+
+### Get a free key
+
+1. Get a free key at https://aistudio.google.com/apikey (Google AI Studio — the free Generative
+   Language API tier used by `@ai-sdk/google`, **not** paid Vertex AI).
+2. Set it as `GOOGLE_GENERATIVE_AI_API_KEY` in `backend/.env`.
+3. Everything else below has a working default — no other setup required.
+
+### Env vars
+
+| Variable | Purpose | Default |
+|---|---|---|
+| `GOOGLE_GENERATIVE_AI_API_KEY` | Free AI Studio API key | — (required) |
+| `GEMINI_MODEL` | Gemini model id | `gemini-2.0-flash` |
+| `SUMMARY_INTERVAL_MS` | How often the scheduler tick fires | `86400000` (24h) |
+| `SUMMARY_WINDOW_MS` | How far back each summary looks | `86400000` (24h) |
+
+### Running it
+
+The scheduler runs **in-process** — no separate worker process in this phase (Phase 5 splits
+workers into their own processes). It registers a repeatable BullMQ job on app start
+(`onApplicationBootstrap`) and fires every `SUMMARY_INTERVAL_MS`.
+
+To demo without waiting a full day, either:
+- set `SUMMARY_INTERVAL_MS=60000` (1 minute) in `.env` and restart the API, **or**
+- `POST /summaries/run` (requires `Authorization: Bearer <access token>`) enqueues the same
+  scheduler job immediately — `202 { "data": { "enqueued": true } }`.
+
+Send a few messages in a group, wait for the next tick (or trigger it manually), and an
+`AI_SUMMARY` message appears in that group's chat live, via the same `new_message` socket
+broadcast as any other message. A group with no new messages in the window, or one already
+summarized for the current window, is skipped.
+
+---
+
 ## Project structure
 
 ```
@@ -172,6 +216,8 @@ backend/                 # NestJS API
     users/               # user persistence + serialization entity
     groups/              # groups + membership + join
     messages/            # message create + cursor-paginated history
+    summary/             # Phase 4: BullMQ scheduler + per-group summary jobs
+    ai/                  # Phase 4: Gemini wrapper (Vercel AI SDK), vendor isolated
   prisma/
     schema.prisma        # data model
     migrations/          # versioned schema changes
