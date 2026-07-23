@@ -44,3 +44,52 @@ describe('SummaryProcessor — scheduler job', () => {
     expect(opts.backoff).toEqual({ type: 'exponential', delay: 2000 });
   });
 });
+
+import { JOB_GROUP_SUMMARY as GS } from './summary.constants';
+
+describe('SummaryProcessor — group-summary job', () => {
+  function make() {
+    const messages = {
+      hasSummarySince: jest.fn().mockResolvedValue(false),
+      findForSummary: jest.fn().mockResolvedValue([
+        { sender: { name: 'Ada' }, content: 'ship it', createdAt: new Date() },
+      ]),
+      createAiSummary: jest.fn().mockResolvedValue({ id: 's1' }),
+    };
+    const ai = { summarize: jest.fn().mockResolvedValue('digest') };
+    const processor = new SummaryProcessor(
+      { add: jest.fn() } as never,
+      { findActiveGroups: jest.fn() } as never,
+      messages as never,
+      ai as never,
+      { getOrThrow: () => 86_400_000 } as never,
+    );
+    return { processor, messages, ai };
+  }
+
+  it('summarizes and posts an AI_SUMMARY for an active group', async () => {
+    const { processor, messages, ai } = make();
+    await processor.process({ name: GS, data: { groupId: 'g1' } } as never);
+
+    expect(ai.summarize).toHaveBeenCalledWith([{ sender: 'Ada', content: 'ship it' }]);
+    expect(messages.createAiSummary).toHaveBeenCalledWith('g1', 'digest');
+  });
+
+  it('skips when a summary already exists for the window', async () => {
+    const { processor, messages, ai } = make();
+    messages.hasSummarySince.mockResolvedValue(true);
+    await processor.process({ name: GS, data: { groupId: 'g1' } } as never);
+
+    expect(ai.summarize).not.toHaveBeenCalled();
+    expect(messages.createAiSummary).not.toHaveBeenCalled();
+  });
+
+  it('skips when there are no messages in the window', async () => {
+    const { processor, messages, ai } = make();
+    messages.findForSummary.mockResolvedValue([]);
+    await processor.process({ name: GS, data: { groupId: 'g1' } } as never);
+
+    expect(ai.summarize).not.toHaveBeenCalled();
+    expect(messages.createAiSummary).not.toHaveBeenCalled();
+  });
+});

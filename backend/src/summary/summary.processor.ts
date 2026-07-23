@@ -64,8 +64,33 @@ export class SummaryProcessor extends WorkerHost {
     }
   }
 
-  // runGroupSummary is implemented in Task 6.
+  /** One group, fully isolated. Skips are cheap; a throw here retries only THIS group's job. */
   private async runGroupSummary(groupId: string): Promise<void> {
-    void groupId;
+    const windowMs = this.config.getOrThrow<number>('SUMMARY_WINDOW_MS');
+    const since = new Date(Date.now() - windowMs);
+
+    if (await this.messages.hasSummarySince(groupId, since)) {
+      this.logger.debug(`group ${groupId}: summary already exists for window — skip`);
+      return;
+    }
+
+    const rows = await this.messages.findForSummary(groupId, since);
+    if (rows.length === 0) {
+      this.logger.debug(`group ${groupId}: no messages in window — skip`);
+      return;
+    }
+
+    const transcript = rows.map((r) => ({
+      sender: r.sender?.name ?? 'Unknown',
+      content: r.content,
+    }));
+    const summary = await this.ai.summarize(transcript);
+    if (!summary) {
+      this.logger.warn(`group ${groupId}: empty summary from model — skip`);
+      return;
+    }
+
+    await this.messages.createAiSummary(groupId, summary);
+    this.logger.log(`group ${groupId}: summary posted`);
   }
 }
