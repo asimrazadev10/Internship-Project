@@ -4,7 +4,9 @@ import {
   ValidationPipe,
 } from '@nestjs/common';
 import { APP_FILTER, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
+import { ConfigService } from '@nestjs/config';
 import { EventEmitterModule } from '@nestjs/event-emitter';
+import { BullModule } from '@nestjs/bullmq';
 
 import { AppConfigModule } from './config/config.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
@@ -15,6 +17,7 @@ import { ChatModule } from './chat/chat.module';
 import { GroupsModule } from './groups/groups.module';
 import { MessagesModule } from './messages/messages.module';
 import { PrismaModule } from './prisma/prisma.module';
+import { SummaryModule } from './summary/summary.module';
 import { UsersModule } from './users/users.module';
 
 /**
@@ -33,6 +36,17 @@ import { UsersModule } from './users/users.module';
     AppConfigModule,
     PrismaModule,
     EventEmitterModule.forRoot(),
+    BullModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        connection: {
+          host: config.getOrThrow<string>('REDIS_HOST'),
+          port: config.getOrThrow<number>('REDIS_PORT'),
+          password: config.get<string>('REDIS_PASSWORD') || undefined,
+        },
+      }),
+    }),
+    SummaryModule,
     UsersModule,
     AuthModule,
     GroupsModule,
