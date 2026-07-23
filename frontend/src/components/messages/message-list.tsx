@@ -16,6 +16,21 @@ function formatTime(iso: string): string {
 }
 
 function MessageRow({ message, isOwn }: { message: Message; isOwn: boolean }) {
+  if (message.type === "AI_SUMMARY") {
+    return (
+      <li className="mx-auto w-full max-w-[92%] rounded-2xl border border-brand/40 bg-brand-soft/60 p-4 shadow-sm">
+        <div className="mb-1.5 flex items-center gap-2 font-mono text-[11px] uppercase tracking-wide text-brand-strong">
+          <span aria-hidden>✨</span>
+          <span>Daily Summary</span>
+          <span className="ml-auto text-muted">{formatTime(message.createdAt)}</span>
+        </div>
+        <p className="whitespace-pre-wrap break-words text-sm text-ink">
+          {message.content}
+        </p>
+      </li>
+    );
+  }
+
   // System / AI messages have no human sender — centred and quiet.
   if (message.senderId === null) {
     return (
