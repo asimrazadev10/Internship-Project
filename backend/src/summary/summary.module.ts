@@ -2,7 +2,6 @@ import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 
 import { AiModule } from '../ai/ai.module';
-import { GroupsModule } from '../groups/groups.module';
 import { MessagesModule } from '../messages/messages.module';
 import { SUMMARY_QUEUE } from './summary.constants';
 import { SummaryController } from './summary.controller';
@@ -15,7 +14,6 @@ import { SummaryService } from './summary.service';
     BullModule.registerQueue({ name: SUMMARY_QUEUE }),
     AiModule,
     MessagesModule,
-    GroupsModule,
   ],
   controllers: [SummaryController],
   providers: [SummaryService, SummaryProcessor, SummaryScheduler],

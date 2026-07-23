@@ -57,6 +57,13 @@ describe('POST /summaries/run (e2e)', () => {
   });
 
   afterAll(async () => {
+    // The stubbed AiSummaryService above always returns 'test summary'. POST /summaries/run
+    // fans out real BullMQ jobs against the shared dev DB, and the live SummaryProcessor writes
+    // an AI_SUMMARY message with that exact content for any currently-active group. Clean those
+    // rows up so this e2e doesn't leave synthetic summaries behind on every run.
+    await prisma.message.deleteMany({
+      where: { type: 'AI_SUMMARY', content: 'test summary' },
+    });
     await prisma.user.deleteMany({ where: { email: user.email } });
     await app.close();
   });
