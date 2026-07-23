@@ -32,13 +32,55 @@ export class MessagesService {
   ) {}
 
   async create(groupId: string, senderId: string, content: string) {
+    return this.persistAndEmit({
+      groupId,
+      senderId,
+      content,
+      type: MessageType.USER,
+    });
+  }
+
+  /** AI daily summary: a message with no human sender. Same broadcast path as a user message. */
+  async createAiSummary(groupId: string, content: string) {
+    return this.persistAndEmit({
+      groupId,
+      senderId: null,
+      content,
+      type: MessageType.AI_SUMMARY,
+    });
+  }
+
+  /** Single write+emit point so USER and AI_SUMMARY messages both broadcast identically. */
+  private async persistAndEmit(data: {
+    groupId: string;
+    senderId: string | null;
+    content: string;
+    type: MessageType;
+  }) {
     const message = await this.prisma.message.create({
-      data: { groupId, senderId, content, type: MessageType.USER },
+      data,
       select: MESSAGE_SELECT,
     });
     // Persist-then-broadcast: the row exists before anyone is told about it.
     this.events.emit(MESSAGE_CREATED, { message } satisfies MessageCreatedPayload);
     return message;
+  }
+
+  /** The window's USER messages (oldest first) that a summary is built from. */
+  findForSummary(groupId: string, since: Date) {
+    return this.prisma.message.findMany({
+      where: { groupId, type: MessageType.USER, createdAt: { gte: since } },
+      orderBy: { createdAt: 'asc' },
+      select: { content: true, createdAt: true, sender: { select: { name: true } } },
+    });
+  }
+
+  /** Idempotency guard: has an AI_SUMMARY already been posted for this group in the window? */
+  async hasSummarySince(groupId: string, since: Date): Promise<boolean> {
+    const count = await this.prisma.message.count({
+      where: { groupId, type: MessageType.AI_SUMMARY, createdAt: { gte: since } },
+    });
+    return count > 0;
   }
 
   /**
