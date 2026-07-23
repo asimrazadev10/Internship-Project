@@ -4,10 +4,12 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Group, MemberRole, Prisma } from '@prisma/client';
 
 import { PrismaService } from '../prisma/prisma.service';
 import { isUuid } from '../common/utils/uuid';
+import { MEMBER_JOINED, MemberJoinedPayload } from './group-events';
 
 /**
  * Group persistence and membership writes. The membership authorization rule lives in
@@ -15,7 +17,10 @@ import { isUuid } from '../common/utils/uuid';
  */
 @Injectable()
 export class GroupsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly events: EventEmitter2,
+  ) {}
 
   /**
    * Create a group and its owner membership ATOMICALLY.
@@ -95,12 +100,28 @@ export class GroupsService {
     }
 
     try {
-      await this.prisma.groupMember.create({
+      // Select the created member in the SAME shape as one members[] item from findOne, so the
+      // event payload can be appended straight into the frontend's cached group detail.
+      const member = await this.prisma.groupMember.create({
         data: { groupId, userId, role: MemberRole.MEMBER },
+        select: {
+          role: true,
+          joinedAt: true,
+          user: { select: { id: true, name: true, email: true } },
+        },
       });
+
+      // Persist-then-broadcast, same pattern as messages: the row exists before anyone is told.
+      // Emitting here (not in the controller) means every join path fans out through one place;
+      // the ChatGateway's @OnEvent turns this into a `member_joined` broadcast to the group's room.
+      this.events.emit(MEMBER_JOINED, {
+        groupId,
+        member,
+      } satisfies MemberJoinedPayload);
     } catch (error) {
       // @@unique([groupId, userId]) → P2002 when already a member. Translate the raw constraint
-      // error into a clear, intent-revealing message.
+      // error into a clear, intent-revealing message. (No event is emitted on this path — a
+      // duplicate join is not a new membership.)
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&
         error.code === 'P2002'

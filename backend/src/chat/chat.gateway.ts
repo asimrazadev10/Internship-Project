@@ -15,6 +15,8 @@ import {
 import { Server } from 'socket.io';
 
 import { JwtPayload } from '../auth/interfaces/auth.types';
+import { MEMBER_JOINED } from '../groups/group-events';
+import type { MemberJoinedPayload } from '../groups/group-events';
 import { GroupsService } from '../groups/groups.service';
 import { MESSAGE_CREATED } from '../messages/message-events';
 import type { MessageCreatedPayload } from '../messages/message-events';
@@ -176,5 +178,15 @@ export class ChatGateway
     this.server
       .to(roomFor(payload.message.groupId))
       .emit('new_message', payload.message);
+  }
+
+  /**
+   * Membership's equivalent of the message broadcast. When someone joins (emitted by
+   * GroupsService.join), tell everyone currently in the group's room so their member list/count
+   * updates live — the same push philosophy as new messages, no client refresh.
+   */
+  @OnEvent(MEMBER_JOINED)
+  broadcastMemberJoined(payload: MemberJoinedPayload): void {
+    this.server.to(roomFor(payload.groupId)).emit('member_joined', payload);
   }
 }
