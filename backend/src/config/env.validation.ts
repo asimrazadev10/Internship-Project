@@ -104,6 +104,27 @@ export class EnvironmentVariables {
   @IsString()
   @IsNotEmpty({ message: 'SOCKET_CORS_ORIGIN is required' })
   SOCKET_CORS_ORIGIN: string = 'http://localhost:3001';
+
+  // Phase 4 — AI daily summaries.
+  // Free Google AI Studio key (Generative Language API via @ai-sdk/google, NOT paid Vertex).
+  @IsString()
+  @IsNotEmpty({ message: 'GOOGLE_GENERATIVE_AI_API_KEY is required' })
+  GOOGLE_GENERATIVE_AI_API_KEY!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  GEMINI_MODEL: string = 'gemini-2.0-flash';
+
+  // Scheduler tick + how far back each summary looks. Default 24h; set small (e.g. 60000) to demo.
+  @Type(() => Number)
+  @IsInt({ message: 'SUMMARY_INTERVAL_MS must be an integer' })
+  @Min(1000)
+  SUMMARY_INTERVAL_MS = 86_400_000;
+
+  @Type(() => Number)
+  @IsInt({ message: 'SUMMARY_WINDOW_MS must be an integer' })
+  @Min(1000)
+  SUMMARY_WINDOW_MS = 86_400_000;
 }
 
 export function validateEnv(
