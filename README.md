@@ -175,27 +175,32 @@ on the persistence side.
 Phase 4 ran everything in-process inside the main API. Phase 5 splits it into **4 standalone
 worker processes**, each draining its own BullMQ queue:
 
-| Queue | Worker script | Stage |
+| Queue | Worker script | Job(s) it drains |
 |---|---|---|
-| `summary-scheduler` | `worker:scheduler` | finds active groups, fans out one Flow per group |
-| `summary-generate` | `worker:ai` | fetches messages + calls Gemini (skip logic lives here) |
-| `summary-save` | `worker:summary` | persists the `AI_SUMMARY` row |
-| `summary-publish` | `worker:notification` | broadcasts the persisted row to clients |
+| `scheduler-queue` | `worker:scheduler` | the repeatable tick → finds active groups, builds one Flow per group |
+| `ai-queue` | `worker:ai` | `generate-ai-summary` (pure Gemini — the ai-worker needs no DB access) |
+| `summary-queue` | `worker:summary` | `fetch-messages`, `save-summary`, and the `group-summary` parent |
+| `notification-queue` | `worker:notification` | `publish-summary` (broadcast the persisted row) |
 
-Each active group gets **one BullMQ Flow** (`FlowProducer`), not four independent jobs. A Flow's
-root is the *last* stage to run; children run first and each parent reads its result via
-`job.getChildrenValues()`. Concretely:
+Each active group gets **one BullMQ Flow** (`FlowProducer`) — a `group-summary` parent whose child
+chain is the four stages. A parent completes only after **all** its children succeed; children run
+first and each parent reads its child's result via `job.getChildrenValues()`. Concretely:
 
 ```
-publish-summary (root, summary-publish queue)
-└── save-summary (summary-save queue)
-    └── generate-ai-summary (leaf, summary-generate queue)
+group-summary            (parent, summary-queue — completes only after all children)
+└── publish-summary      (notification-queue)
+    └── save-summary     (summary-queue)
+        └── generate-ai-summary (ai-queue)
+            └── fetch-messages  (summary-queue, leaf — runs FIRST)
 ```
 
-`generate` runs first (leaf), `save` reads its return value and persists, `publish` reads save's
-result and broadcasts — so persist-then-broadcast ordering falls out of the Flow shape for free.
-A permanent failure at any stage (`failParentOnFailure`) fails the whole flow cleanly instead of
-leaving parents stuck in waiting-children.
+`fetch-messages` runs first (leaf): it reads the window's messages and owns the exists/empty skips.
+`generate` calls Gemini on the fetched transcript, `save` persists the `AI_SUMMARY` row, and
+`publish` broadcasts it — so persist-then-broadcast ordering falls out of the Flow shape for free,
+and the `group-summary` parent reports completion once the whole chain is done. A permanent failure
+at any stage (`failParentOnFailure`) fails the whole flow cleanly instead of leaving parents stuck
+in waiting-children. (It is a nested chain rather than four flat siblings because the stages are
+strictly sequential — flat siblings would run in parallel.)
 
 Because `publish` now runs in a **different process** than the main API (which still holds the
 Socket.IO connections), it can't call `server.emit()` directly. It broadcasts instead via
@@ -206,10 +211,10 @@ over Redis and reaches connected clients exactly like any other socket event.
 ### Running the workers
 
 ```bash
-npm run worker:scheduler      # summary-scheduler queue
-npm run worker:ai              # summary-generate queue (Gemini calls)
-npm run worker:summary         # summary-save queue
-npm run worker:notification    # summary-publish queue
+npm run worker:scheduler      # scheduler-queue
+npm run worker:ai              # ai-queue (Gemini calls)
+npm run worker:summary         # summary-queue (fetch-messages, save-summary, group-summary)
+npm run worker:notification    # notification-queue (broadcast)
 npm run workers:all            # all four, concurrently, in one terminal (dev convenience)
 ```
 
@@ -232,9 +237,9 @@ worker processes must be running for summaries to be generated and broadcast.
 | `SUMMARY_INTERVAL_MS` | How often the scheduler tick fires | `86400000` (24h) |
 | `SUMMARY_WINDOW_MS` | How far back each summary looks | `86400000` (24h) |
 | `SCHEDULER_WORKER_CONCURRENCY` | Concurrent jobs, `worker:scheduler` | `1` |
-| `AI_WORKER_CONCURRENCY` | Concurrent jobs, `worker:ai` (paired with the Gemini rate limiter below) | `2` |
+| `AI_WORKER_CONCURRENCY` | Concurrent jobs, `worker:ai` (paired with the Gemini rate limiter below) | `10` |
 | `SUMMARY_WORKER_CONCURRENCY` | Concurrent jobs, `worker:summary` | `5` |
-| `NOTIFICATION_WORKER_CONCURRENCY` | Concurrent jobs, `worker:notification` | `10` |
+| `NOTIFICATION_WORKER_CONCURRENCY` | Concurrent jobs, `worker:notification` | `3` |
 
 ### Running it
 
@@ -315,27 +320,19 @@ Each stage's job waits in its queue until the worker that drains it is started, 
 completes in the correct order even though the four workers were never alive at the same time — that
 durability is the whole point of pushing the work through Redis-backed queues.
 
-### Deviations from CLAUDE.md §6/§9 (and why)
+### A note on the Flow shape
 
-- **Queue names** — `summary-scheduler`/`summary-generate`/`summary-save`/`summary-publish`
-  instead of §6's `scheduler-queue`/`ai-queue`/`summary-queue`/`notification-queue`. Namespacing
-  every queue under the `summary-` feature prefix avoids Redis key collisions with other features
-  that might one day add their own `ai-queue`/`summary-queue`. The worker script names
-  (`worker:scheduler`/`worker:ai`/`worker:summary`/`worker:notification`) and the concurrency
-  env-var names (`*_WORKER_CONCURRENCY`) still match §9 exactly.
-- **Linear 3-stage Flow** (fetch folded into `generate`) instead of §6's flat 4-child sketch with
-  a separate `fetch-messages` job. Folding fetch into generate avoids shuttling a whole message
-  transcript through Redis as job data between two stages, co-locates all the skip logic
-  (`exists`/`empty`/`blank`) in one place, and — more fundamentally — a nested parent→child chain
-  is the correct BullMQ shape for a strictly *sequential* dependency (each stage needs the
-  previous stage's output); §6's flat list of four children under one parent reads as four
-  **parallel siblings**, which is not what this pipeline needs.
-- **Concurrency values** — `AI_WORKER_CONCURRENCY=2` / `NOTIFICATION_WORKER_CONCURRENCY=10`
-  instead of §9's `10`/`3`. AI generation is bound by Gemini's free-tier rate limit, so it's kept
-  low and paired with the Redis-coordinated `limiter` BullMQ option on `GenerateProcessor`, which
-  caps the global Gemini call rate across all `worker:ai` instances; publishing is just
-  broadcasting an already-persisted message, which is cheap, so it's kept high.
-  These are the code's actual defaults, and `.env.example` is already aligned to them.
+The queues (`scheduler-queue`/`summary-queue`/`ai-queue`/`notification-queue`), the workers, the
+four child stages (`fetch-messages`, `generate-ai-summary`, `save-summary`, `publish-summary`), the
+`group-summary` parent, and the concurrency defaults all follow the assignment.
+
+One implementation detail worth knowing: the parent's children are arranged as a **nested chain**
+rather than four flat siblings, because the stages are strictly sequential — each reads the previous
+stage's output via `getChildrenValues()`. Four flat children under one parent would run in
+**parallel**, which a `fetch → generate → save → publish` pipeline cannot do. The `group-summary`
+parent still completes only after the whole chain succeeds, and `failParentOnFailure` bubbles any
+stage failure up so the flow fails cleanly. The transcript is passed `fetch → generate` as the job's
+return value, so the ai-worker needs no database access at all.
 
 ---
 
