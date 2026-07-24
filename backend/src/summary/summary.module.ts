@@ -1,21 +1,16 @@
 import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 
-import { AiModule } from '../ai/ai.module';
-import { MessagesModule } from '../messages/messages.module';
-import { SUMMARY_QUEUE } from './summary.constants';
+import { SCHEDULER_QUEUE } from '../queues/queue.constants';
 import { SummaryController } from './summary.controller';
-import { SummaryProcessor } from './summary.processor';
-import { SummaryScheduler } from './summary.scheduler';
-import { SummaryService } from './summary.service';
 
+/**
+ * Main-app slice of the summary feature: JUST the manual trigger, registered as a PRODUCER on the
+ * scheduler queue. All processing (scheduler fan-out + the generate/save/publish stages) now lives
+ * in the standalone worker processes under src/workers, so no @Processor is wired here.
+ */
 @Module({
-  imports: [
-    BullModule.registerQueue({ name: SUMMARY_QUEUE }),
-    AiModule,
-    MessagesModule,
-  ],
+  imports: [BullModule.registerQueue({ name: SCHEDULER_QUEUE })],
   controllers: [SummaryController],
-  providers: [SummaryService, SummaryProcessor, SummaryScheduler],
 })
 export class SummaryModule {}

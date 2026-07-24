@@ -9,6 +9,7 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
 import { BullModule } from '@nestjs/bullmq';
 
 import { AppConfigModule } from './config/config.module';
+import { bullConnectionFactory } from './config/redis.config';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { PrismaExceptionFilter } from './common/filters/prisma-exception.filter';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
@@ -38,13 +39,7 @@ import { UsersModule } from './users/users.module';
     EventEmitterModule.forRoot(),
     BullModule.forRootAsync({
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        connection: {
-          host: config.getOrThrow<string>('REDIS_HOST'),
-          port: config.getOrThrow<number>('REDIS_PORT'),
-          password: config.get<string>('REDIS_PASSWORD') || undefined,
-        },
-      }),
+      useFactory: bullConnectionFactory,
     }),
     SummaryModule,
     UsersModule,

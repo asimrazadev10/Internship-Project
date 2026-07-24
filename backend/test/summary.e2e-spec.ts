@@ -1,13 +1,3 @@
-// AppModule transitively imports AiSummaryService, which imports the ESM-only '@ai-sdk/google'
-// package. Mock the vendor modules at the boundary (same pattern as
-// summary.processor.spec.ts) BEFORE importing AppModule, so ts-jest's CJS transform never has
-// to parse the real ESM source — AiSummaryService itself is still overridden below, but the
-// module chain must resolve cleanly just to load AppModule for the Nest testing module.
-jest.mock('ai', () => ({ generateText: jest.fn() }));
-jest.mock('@ai-sdk/google', () => ({
-  createGoogleGenerativeAI: () => (model: string) => ({ model }),
-}));
-
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
@@ -15,16 +5,14 @@ import { App } from 'supertest/types';
 
 import { AppModule } from './../src/app.module';
 import { PrismaService } from './../src/prisma/prisma.service';
-import { AiSummaryService } from './../src/ai/ai-summary.service';
 
 /**
  * POST /summaries/run — the manual "run summaries now" trigger.
  *
- * The full app boots here, which means the real BullMQ worker (SummaryProcessor) is live and
- * WILL pick up the job this endpoint enqueues. If any group in the (shared, dockerized) dev
- * database happens to be active, that worker would call the real Gemini API — forbidden in
- * automated tests. AiSummaryService is therefore overridden with a stub so no real network
- * call can happen regardless of what the worker does with the enqueued job.
+ * In the distributed design the main app is a PRODUCER only: this endpoint enqueues a scheduler-tick
+ * into the summary-scheduler queue and returns. No worker runs inside the API process, so nothing
+ * calls Gemini and no AI_SUMMARY rows are written here — the enqueued job simply waits in Redis for
+ * the (separately run) scheduler worker. We assert the enqueue contract only.
  */
 describe('POST /summaries/run (e2e)', () => {
   let app: INestApplication<App>;
@@ -39,31 +27,17 @@ describe('POST /summaries/run (e2e)', () => {
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
-    })
-      .overrideProvider(AiSummaryService)
-      .useValue({ summarize: async () => 'test summary' })
-      .compile();
+    }).compile();
 
     app = moduleFixture.createNestApplication();
     app.useGlobalPipes(
-      new ValidationPipe({
-        whitelist: true,
-        forbidNonWhitelisted: true,
-        transform: true,
-      }),
+      new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
     );
     prisma = app.get(PrismaService);
     await app.init();
   });
 
   afterAll(async () => {
-    // The stubbed AiSummaryService above always returns 'test summary'. POST /summaries/run
-    // fans out real BullMQ jobs against the shared dev DB, and the live SummaryProcessor writes
-    // an AI_SUMMARY message with that exact content for any currently-active group. Clean those
-    // rows up so this e2e doesn't leave synthetic summaries behind on every run.
-    await prisma.message.deleteMany({
-      where: { type: 'AI_SUMMARY', content: 'test summary' },
-    });
     await prisma.user.deleteMany({ where: { email: user.email } });
     await app.close();
   });
@@ -75,10 +49,7 @@ describe('POST /summaries/run (e2e)', () => {
   });
 
   it('enqueues a scheduler job for an authenticated user', async () => {
-    const register = await request(server())
-      .post('/auth/register')
-      .send(user)
-      .expect(201);
+    const register = await request(server()).post('/auth/register').send(user).expect(201);
     const accessToken = register.body.data.accessToken;
 
     const res = await request(server())

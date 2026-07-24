@@ -2,7 +2,6 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { MessageType } from '@prisma/client';
 
 import { MessagesService } from './messages.service';
-import { MESSAGE_CREATED } from './message-events';
 
 function makeService() {
   const emit = jest.fn();
@@ -27,21 +26,6 @@ function makeService() {
   );
   return { service, prisma, emit };
 }
-
-describe('MessagesService.createAiSummary', () => {
-  it('persists an AI_SUMMARY with null sender and emits message.created', async () => {
-    const { service, prisma, emit } = makeService();
-    const msg = await service.createAiSummary('g1', 'summary text');
-
-    expect(prisma.message.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: { groupId: 'g1', senderId: null, content: 'summary text', type: MessageType.AI_SUMMARY },
-      }),
-    );
-    expect(emit).toHaveBeenCalledWith(MESSAGE_CREATED, { message: msg });
-    expect(msg.type).toBe(MessageType.AI_SUMMARY);
-  });
-});
 
 describe('MessagesService.persistAiSummary', () => {
   it('persists an AI_SUMMARY with null sender and does NOT emit message.created', async () => {

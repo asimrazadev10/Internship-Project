@@ -40,16 +40,6 @@ export class MessagesService {
     });
   }
 
-  /** AI daily summary: a message with no human sender. Same broadcast path as a user message. */
-  async createAiSummary(groupId: string, content: string) {
-    return this.persistAndEmit({
-      groupId,
-      senderId: null,
-      content,
-      type: MessageType.AI_SUMMARY,
-    });
-  }
-
   /**
    * AI daily summary: persist a message with no human sender, WITHOUT broadcasting. In the
    * distributed pipeline the broadcast is a separate stage (publish-summary) running in another
