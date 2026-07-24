@@ -9,7 +9,12 @@ import { Group, MemberRole, Prisma } from '@prisma/client';
 
 import { PrismaService } from '../prisma/prisma.service';
 import { isUuid } from '../common/utils/uuid';
-import { MEMBER_JOINED, MemberJoinedPayload } from './group-events';
+import {
+  MEMBER_JOINED,
+  MemberJoinedPayload,
+  READ_MARKED,
+  ReadMarkedPayload,
+} from './group-events';
 
 /**
  * Group persistence and membership writes. The membership authorization rule lives in
@@ -72,6 +77,7 @@ export class GroupsService {
           select: {
             role: true,
             joinedAt: true,
+            lastReadAt: true,
             // Explicit field selection: never `include: { user: true }`, which would pull the
             // password hash into the query result.
             user: { select: { id: true, name: true, email: true } },
@@ -107,6 +113,7 @@ export class GroupsService {
         select: {
           role: true,
           joinedAt: true,
+          lastReadAt: true,
           user: { select: { id: true, name: true, email: true } },
         },
       });
@@ -148,5 +155,23 @@ export class GroupsService {
     if (!membership) {
       throw new ForbiddenException('You are not a member of this group');
     }
+  }
+
+  /**
+   * Read receipt: stamp the caller's membership with "read up to now" and broadcast it. Membership
+   * is already proven by GroupMemberGuard, so the composite key is guaranteed to exist.
+   */
+  async markRead(userId: string, groupId: string): Promise<{ lastReadAt: Date }> {
+    const lastReadAt = new Date();
+    await this.prisma.groupMember.update({
+      where: { groupId_userId: { groupId, userId } },
+      data: { lastReadAt },
+    });
+    this.events.emit(READ_MARKED, {
+      groupId,
+      userId,
+      lastReadAt,
+    } satisfies ReadMarkedPayload);
+    return { lastReadAt };
   }
 }

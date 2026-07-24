@@ -86,6 +86,8 @@ model GroupMember {
   userId   String     @db.Uuid
   role     MemberRole @default(MEMBER)
   joinedAt DateTime   @default(now()) @db.Timestamptz(3)
+  // Read receipts (bonus): the instant this member last marked the group read. Null = never.
+  lastReadAt DateTime? @db.Timestamptz(3)
 
   group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
   user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)

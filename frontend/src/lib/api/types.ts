@@ -65,6 +65,7 @@ export interface GroupSummary {
 export interface GroupMemberView {
   role: MemberRole;
   joinedAt: string;
+  lastReadAt: string | null;
   user: { id: string; name: string; email: string };
 }
 

@@ -11,10 +11,20 @@ export const MEMBER_JOINED = 'member.joined';
 export interface JoinedMember {
   role: MemberRole;
   joinedAt: Date;
+  lastReadAt: Date | null;
   user: { id: string; name: string; email: string };
 }
 
 export interface MemberJoinedPayload {
   groupId: string;
   member: JoinedMember;
+}
+
+/** Emitted after a member marks a group read, so the gateway can broadcast a read receipt. */
+export const READ_MARKED = 'read.marked';
+
+export interface ReadMarkedPayload {
+  groupId: string;
+  userId: string;
+  lastReadAt: Date;
 }

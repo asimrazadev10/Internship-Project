@@ -52,4 +52,16 @@ export class GroupsController {
   ) {
     return this.groupsService.join(userId, id);
   }
+
+  /** Mark the group read up to now, for the caller. Members only (GroupMemberGuard). */
+  @Post(':id/read')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(GroupMemberGuard)
+  @ResponseMessage('Marked as read')
+  markRead(
+    @CurrentUser('userId') userId: string,
+    @Param('id', ParseUuidPipe) id: string,
+  ) {
+    return this.groupsService.markRead(userId, id);
+  }
 }

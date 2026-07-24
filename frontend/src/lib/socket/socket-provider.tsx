@@ -97,6 +97,23 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
       },
     );
 
+    // A member marked the group read — update their lastReadAt so "seen" indicators move live.
+    nextSocket.on(
+      "read_receipt",
+      (p: { groupId: string; userId: string; lastReadAt: string }) => {
+        queryClient.setQueryData<GroupDetail>(groupKeys.detail(p.groupId), (old) =>
+          old
+            ? {
+                ...old,
+                members: old.members.map((m) =>
+                  m.user.id === p.userId ? { ...m, lastReadAt: p.lastReadAt } : m,
+                ),
+              }
+            : old,
+        );
+      },
+    );
+
     return () => {
       nextSocket.close();
       setSocket(null);

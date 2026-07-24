@@ -124,7 +124,7 @@ export default function GroupPage() {
 
         {group && (
           <>
-            <MessageList groupId={groupId} />
+            <MessageList groupId={groupId} members={group.members} />
             {typingNames.length > 0 && (
               <p
                 aria-live="polite"

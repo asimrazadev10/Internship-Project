@@ -26,3 +26,13 @@ export async function joinGroup(groupId: string): Promise<GroupSummary> {
   );
   return data.data;
 }
+
+/** Mark the group read up to now (for read receipts). Returns the new lastReadAt. */
+export async function markRead(
+  groupId: string,
+): Promise<{ lastReadAt: string }> {
+  const { data } = await api.post<ApiSuccess<{ lastReadAt: string }>>(
+    `/groups/${groupId}/read`,
+  );
+  return data.data;
+}

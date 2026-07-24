@@ -3,9 +3,10 @@
 import { useEffect, useRef } from "react";
 
 import { Avatar } from "@/components/ui/avatar";
+import { markRead } from "@/lib/api/groups";
 import { toggleReaction } from "@/lib/api/messages";
 import { getApiErrorMessage } from "@/lib/api/error";
-import type { Message, Reaction } from "@/lib/api/types";
+import type { GroupMemberView, Message, Reaction } from "@/lib/api/types";
 import { useAuth } from "@/lib/auth/auth-context";
 import { useGroupMessages } from "@/lib/queries/messages";
 
@@ -75,11 +76,13 @@ function MessageRow({
   isOwn,
   currentUserId,
   onReact,
+  seenBy,
 }: {
   message: Message;
   isOwn: boolean;
   currentUserId?: string;
   onReact: (messageId: string, emoji: string) => void;
+  seenBy?: string[] | null;
 }) {
   if (message.type === "AI_SUMMARY") {
     return (
@@ -126,12 +129,23 @@ function MessageRow({
           isOwn={isOwn}
           onReact={(emoji) => onReact(message.id, emoji)}
         />
+        {seenBy && seenBy.length > 0 && (
+          <p className="px-1 text-[10px] text-muted">
+            Seen by {seenBy.length === 1 ? seenBy[0] : `${seenBy.length} people`}
+          </p>
+        )}
       </div>
     </li>
   );
 }
 
-export function MessageList({ groupId }: { groupId: string }) {
+export function MessageList({
+  groupId,
+  members,
+}: {
+  groupId: string;
+  members: GroupMemberView[];
+}) {
   const { user } = useAuth();
   const { messages, isLoading, isError, error, hasOlder, loadOlder, isLoadingOlder } =
     useGroupMessages(groupId);
@@ -148,7 +162,28 @@ export function MessageList({ groupId }: { groupId: string }) {
   const newestId = messages[messages.length - 1]?.id;
   useEffect(() => {
     bottomRef.current?.scrollIntoView();
-  }, [newestId]);
+    // Mark the group read once the newest message is on screen (tab focused).
+    if (
+      newestId &&
+      typeof document !== "undefined" &&
+      document.visibilityState === "visible"
+    ) {
+      void markRead(groupId).catch(() => {});
+    }
+  }, [newestId, groupId]);
+
+  // "Seen by": other members whose lastReadAt has reached my most recent message.
+  const lastOwn = [...messages].reverse().find((m) => m.senderId === user?.id);
+  const seenNames = lastOwn
+    ? members
+        .filter(
+          (m) =>
+            m.user.id !== user?.id &&
+            m.lastReadAt !== null &&
+            m.lastReadAt >= lastOwn.createdAt,
+        )
+        .map((m) => m.user.name)
+    : [];
 
   if (isLoading) {
     return (
@@ -192,6 +227,7 @@ export function MessageList({ groupId }: { groupId: string }) {
                 isOwn={message.senderId === user?.id}
                 currentUserId={user?.id}
                 onReact={react}
+                seenBy={message.id === lastOwn?.id ? seenNames : null}
               />
             ))}
           </ul>

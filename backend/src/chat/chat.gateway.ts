@@ -15,8 +15,8 @@ import {
 import { Server } from 'socket.io';
 
 import { JwtPayload } from '../auth/interfaces/auth.types';
-import { MEMBER_JOINED } from '../groups/group-events';
-import type { MemberJoinedPayload } from '../groups/group-events';
+import { MEMBER_JOINED, READ_MARKED } from '../groups/group-events';
+import type { MemberJoinedPayload, ReadMarkedPayload } from '../groups/group-events';
 import { GroupsService } from '../groups/groups.service';
 import { MESSAGE_CREATED } from '../messages/message-events';
 import type { MessageCreatedPayload } from '../messages/message-events';
@@ -260,5 +260,11 @@ export class ChatGateway
   @OnEvent(REACTION_CHANGED)
   broadcastReaction(payload: ReactionChangedPayload): void {
     this.server.to(roomFor(payload.groupId)).emit('reaction_updated', payload);
+  }
+
+  /** A member marked the group read — tell the room so "seen" indicators update live. */
+  @OnEvent(READ_MARKED)
+  broadcastRead(payload: ReadMarkedPayload): void {
+    this.server.to(roomFor(payload.groupId)).emit('read_receipt', payload);
   }
 }
