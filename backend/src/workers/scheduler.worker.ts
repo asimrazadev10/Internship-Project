@@ -8,7 +8,7 @@ import { SchedulerWorkerModule } from './scheduler-worker.module';
 async function bootstrap(): Promise<void> {
   const ctx = await NestFactory.createApplicationContext(SchedulerWorkerModule);
   ctx.enableShutdownHooks();
-  Logger.log('scheduler-worker up (queue: summary-scheduler)', 'Worker');
+  Logger.log('scheduler-worker up (queue: scheduler-queue)', 'Worker');
 }
 
 void bootstrap();

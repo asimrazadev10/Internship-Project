@@ -10,7 +10,7 @@ import { AiWorkerModule } from './ai-worker.module';
 async function bootstrap(): Promise<void> {
   const ctx = await NestFactory.createApplicationContext(AiWorkerModule);
   ctx.enableShutdownHooks();
-  Logger.log('ai-worker up (queue: summary-generate)', 'Worker');
+  Logger.log('ai-worker up (queue: ai-queue)', 'Worker');
 }
 
 void bootstrap();

@@ -8,7 +8,7 @@ import { SummaryWorkerModule } from './summary-worker.module';
 async function bootstrap(): Promise<void> {
   const ctx = await NestFactory.createApplicationContext(SummaryWorkerModule);
   ctx.enableShutdownHooks();
-  Logger.log('summary-worker up (queue: summary-save)', 'Worker');
+  Logger.log('summary-worker up (queue: summary-queue)', 'Worker');
 }
 
 void bootstrap();

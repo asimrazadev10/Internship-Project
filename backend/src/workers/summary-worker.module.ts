@@ -8,8 +8,11 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { MessagesModule } from '../messages/messages.module';
 import { bullConnectionFactory } from '../config/redis.config';
 import { SUMMARY_QUEUE } from '../queues/queue.constants';
-import { SaveProcessor } from '../summary/stages/save.processor';
+import { SummaryProcessor } from '../summary/stages/summary.processor';
 
+// The summary-worker drains summary-queue, handling three jobs (fetch-messages, save-summary, and
+// the group-summary parent) via SummaryProcessor. EventEmitterModule satisfies MessagesService's
+// EventEmitter2 dependency; save-summary uses persistAiSummary (persist only), so it never fires.
 @Module({
   imports: [
     AppConfigModule,
@@ -19,6 +22,6 @@ import { SaveProcessor } from '../summary/stages/save.processor';
     BullModule.registerQueue({ name: SUMMARY_QUEUE }),
     MessagesModule,
   ],
-  providers: [SaveProcessor],
+  providers: [SummaryProcessor],
 })
 export class SummaryWorkerModule {}

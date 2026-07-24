@@ -3,9 +3,11 @@ import {
   AI_QUEUE,
   SUMMARY_QUEUE,
   NOTIFICATION_QUEUE,
+  JOB_GROUP_SUMMARY,
   JOB_GENERATE,
   JOB_SAVE,
   JOB_PUBLISH,
+  JOB_FETCH,
   concurrencyFromEnv,
   firstChildValue,
 } from './queue.constants';
@@ -14,40 +16,47 @@ describe('buildSummaryFlow', () => {
   const since = new Date('2026-07-24T00:00:00.000Z');
   const bucket = 1_700_000_000_000;
   const flow = buildSummaryFlow('g1', since, bucket);
+  const publish = flow.children![0];
+  const save = publish.children![0];
+  const generate = save.children![0];
+  const fetch = generate.children![0];
 
-  it('roots at publish on the notification queue', () => {
-    expect(flow.name).toBe(JOB_PUBLISH);
-    expect(flow.queueName).toBe(NOTIFICATION_QUEUE);
+  it('roots at group-summary on the summary queue (the parent)', () => {
+    expect(flow.name).toBe(JOB_GROUP_SUMMARY);
+    expect(flow.queueName).toBe(SUMMARY_QUEUE);
     expect(flow.data).toEqual({ groupId: 'g1' });
-    expect(flow.opts?.jobId).toBe(`${JOB_PUBLISH}:g1:${bucket}`);
+    expect(flow.opts?.jobId).toBe(`${JOB_GROUP_SUMMARY}:g1:${bucket}`);
   });
 
-  it('nests save (summary queue) under publish, failing the parent on failure', () => {
-    const save = flow.children![0];
+  it('nests publish → save → generate under it, each failing the parent on failure', () => {
+    expect(publish.name).toBe(JOB_PUBLISH);
+    expect(publish.queueName).toBe(NOTIFICATION_QUEUE);
+    expect(publish.opts?.failParentOnFailure).toBe(true);
+
     expect(save.name).toBe(JOB_SAVE);
     expect(save.queueName).toBe(SUMMARY_QUEUE);
-    expect(save.data).toEqual({ groupId: 'g1' });
-    expect(save.opts?.jobId).toBe(`${JOB_SAVE}:g1:${bucket}`);
     expect(save.opts?.failParentOnFailure).toBe(true);
+
+    expect(generate.name).toBe(JOB_GENERATE);
+    expect(generate.queueName).toBe(AI_QUEUE);
+    expect(generate.data).toEqual({ groupId: 'g1' });
+    expect(generate.opts?.failParentOnFailure).toBe(true);
   });
 
-  it('nests generate (ai queue) at the leaf with the ISO window and retry policy', () => {
-    const gen = flow.children![0].children![0];
-    expect(gen.name).toBe(JOB_GENERATE);
-    expect(gen.queueName).toBe(AI_QUEUE);
-    expect(gen.data).toEqual({ groupId: 'g1', since: since.toISOString() });
-    expect(gen.opts?.jobId).toBe(`${JOB_GENERATE}:g1:${bucket}`);
-    expect(gen.opts?.failParentOnFailure).toBe(true);
-    expect(gen.opts?.attempts).toBe(3);
-    expect(gen.opts?.backoff).toEqual({ type: 'exponential', delay: 2000 });
+  it('has fetch-messages as the leaf, carrying the ISO window', () => {
+    expect(fetch.name).toBe(JOB_FETCH);
+    expect(fetch.queueName).toBe(SUMMARY_QUEUE);
+    expect(fetch.data).toEqual({ groupId: 'g1', since: since.toISOString() });
+    expect(fetch.opts?.jobId).toBe(`${JOB_FETCH}:g1:${bucket}`);
+    expect(fetch.opts?.failParentOnFailure).toBe(true);
+    expect(fetch.children).toBeUndefined();
   });
 
-  it('applies the same bounded-retry policy to the save and publish nodes', () => {
-    const save = flow.children![0];
-    expect(save.opts?.attempts).toBe(3);
-    expect(save.opts?.backoff).toEqual({ type: 'exponential', delay: 2000 });
-    expect(flow.opts?.attempts).toBe(3);
-    expect(flow.opts?.backoff).toEqual({ type: 'exponential', delay: 2000 });
+  it('applies the same bounded-retry policy to every node', () => {
+    for (const node of [flow, publish, save, generate, fetch]) {
+      expect(node.opts?.attempts).toBe(3);
+      expect(node.opts?.backoff).toEqual({ type: 'exponential', delay: 2000 });
+    }
   });
 });
 

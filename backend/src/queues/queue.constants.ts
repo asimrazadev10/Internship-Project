@@ -1,23 +1,25 @@
 import { FlowJob } from 'bullmq';
 
-// Four queues, one per pipeline stage, each drained by its own worker process.
-export const SCHEDULER_QUEUE = 'summary-scheduler';
-export const AI_QUEUE = 'summary-generate';
-export const SUMMARY_QUEUE = 'summary-save';
-export const NOTIFICATION_QUEUE = 'summary-publish';
+// Four queues (matching the assignment): a scheduler queue plus one per work type.
+export const SCHEDULER_QUEUE = 'scheduler-queue';
+export const AI_QUEUE = 'ai-queue';
+export const SUMMARY_QUEUE = 'summary-queue';
+export const NOTIFICATION_QUEUE = 'notification-queue';
 
 // FlowProducer name (registered by the scheduler worker; injected with @InjectFlowProducer).
 export const SUMMARY_FLOW = 'summary-flow';
 
 // Job names — also used as the jobId prefix per stage.
 export const JOB_SCHEDULER_TICK = 'scheduler-tick';
+export const JOB_GROUP_SUMMARY = 'group-summary'; // the per-group parent job (flow root)
+export const JOB_FETCH = 'fetch-messages'; // leaf — reads the window's messages
 export const JOB_GENERATE = 'generate-ai-summary';
 export const JOB_SAVE = 'save-summary';
 export const JOB_PUBLISH = 'publish-summary';
 
 /**
  * Deterministic id so a re-fired flow within the same window reuses the SAME ids per stage and
- * BullMQ dedupes instead of summarizing twice. `hasSummarySince` (in the generate stage) is the
+ * BullMQ dedupes instead of summarizing twice. `hasSummarySince` (in the fetch stage) is the
  * DB-level guarantee behind this best-effort queue-level dedup.
  */
 export const stageJobId = (
@@ -36,38 +38,68 @@ const jobOpts = (jobId: string) => ({
 });
 
 /**
- * One group's pipeline as a BullMQ Flow. The ROOT is the LAST stage to run (publish); children run
- * first (generate at the leaf). Each parent reads its single child's return value via
- * job.getChildrenValues(). `failParentOnFailure` makes a permanently-failed leaf fail the whole
- * flow cleanly instead of leaving parents stuck in waiting-children — no half-written state.
+ * One group's pipeline as a BullMQ Flow, matching the assignment's tree:
+ *
+ *   group-summary          (parent, summary-queue) — completes only after ALL children succeed
+ *     └─ publish-summary   (notification-queue)
+ *          └─ save-summary (summary-queue)
+ *               └─ generate-ai-summary (ai-queue)
+ *                    └─ fetch-messages  (summary-queue, leaf — runs FIRST)
+ *
+ * A NESTED chain rather than four flat siblings, because the stages are strictly sequential: each
+ * reads the previous stage's return via job.getChildrenValues(). `failParentOnFailure` bubbles a
+ * failed child up so the whole flow fails cleanly instead of leaving a parent stuck in
+ * waiting-children — no half-written state.
  */
 export const buildSummaryFlow = (
   groupId: string,
   since: Date,
   bucketStart: number,
 ): FlowJob => ({
-  name: JOB_PUBLISH,
-  queueName: NOTIFICATION_QUEUE,
+  name: JOB_GROUP_SUMMARY,
+  queueName: SUMMARY_QUEUE,
   data: { groupId },
-  opts: jobOpts(stageJobId(JOB_PUBLISH, groupId, bucketStart)),
+  opts: jobOpts(stageJobId(JOB_GROUP_SUMMARY, groupId, bucketStart)),
   children: [
     {
-      name: JOB_SAVE,
-      queueName: SUMMARY_QUEUE,
+      name: JOB_PUBLISH,
+      queueName: NOTIFICATION_QUEUE,
       data: { groupId },
       opts: {
-        ...jobOpts(stageJobId(JOB_SAVE, groupId, bucketStart)),
+        ...jobOpts(stageJobId(JOB_PUBLISH, groupId, bucketStart)),
         failParentOnFailure: true,
       },
       children: [
         {
-          name: JOB_GENERATE,
-          queueName: AI_QUEUE,
-          data: { groupId, since: since.toISOString() },
+          name: JOB_SAVE,
+          queueName: SUMMARY_QUEUE,
+          data: { groupId },
           opts: {
-            ...jobOpts(stageJobId(JOB_GENERATE, groupId, bucketStart)),
+            ...jobOpts(stageJobId(JOB_SAVE, groupId, bucketStart)),
             failParentOnFailure: true,
           },
+          children: [
+            {
+              name: JOB_GENERATE,
+              queueName: AI_QUEUE,
+              data: { groupId },
+              opts: {
+                ...jobOpts(stageJobId(JOB_GENERATE, groupId, bucketStart)),
+                failParentOnFailure: true,
+              },
+              children: [
+                {
+                  name: JOB_FETCH,
+                  queueName: SUMMARY_QUEUE,
+                  data: { groupId, since: since.toISOString() },
+                  opts: {
+                    ...jobOpts(stageJobId(JOB_FETCH, groupId, bucketStart)),
+                    failParentOnFailure: true,
+                  },
+                },
+              ],
+            },
+          ],
         },
       ],
     },

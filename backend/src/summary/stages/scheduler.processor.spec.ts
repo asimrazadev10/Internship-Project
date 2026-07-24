@@ -17,15 +17,19 @@ function make(groups: { id: string }[] = [{ id: 'g1' }, { id: 'g2' }]) {
 }
 
 describe('SchedulerProcessor', () => {
-  it('adds one summary flow per active group, rooted at publish', async () => {
+  it('adds one summary flow per active group, rooted at the group-summary parent', async () => {
     const { processor, flowAdd } = make();
     await processor.process({ name: JOB_SCHEDULER_TICK, data: {} } as never);
 
     expect(flowAdd).toHaveBeenCalledTimes(2);
     const flow = flowAdd.mock.calls[0][0];
-    expect(flow.name).toBe('publish-summary');
-    expect(flow.queueName).toBe('summary-publish');
-    expect(flow.children[0].children[0].data.groupId).toBe('g1');
+    expect(flow.name).toBe('group-summary');
+    expect(flow.queueName).toBe('summary-queue');
+    expect(flow.data.groupId).toBe('g1');
+    // group-summary → publish → save → generate → fetch (leaf)
+    const fetch = flow.children[0].children[0].children[0].children[0];
+    expect(fetch.name).toBe('fetch-messages');
+    expect(fetch.data.groupId).toBe('g1');
   });
 
   it('ignores non-tick jobs', async () => {
@@ -40,7 +44,7 @@ describe('SchedulerProcessor', () => {
     await processor.process({ name: JOB_SCHEDULER_TICK, data: {} } as never);
 
     expect(flowAdd).toHaveBeenCalledTimes(2);
-    expect(flowAdd.mock.calls[1][0].children[0].children[0].data.groupId).toBe('g2');
+    expect(flowAdd.mock.calls[1][0].data.groupId).toBe('g2');
   });
 
   it('registers the repeatable scheduler on bootstrap', async () => {

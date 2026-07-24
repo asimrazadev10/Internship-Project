@@ -14,7 +14,7 @@ const jobWith = (child: SaveResult) =>
   ({
     getChildrenValues: jest
       .fn()
-      .mockResolvedValue({ 'bull:summary-save:save-summary:g1:1': child }),
+      .mockResolvedValue({ 'bull:summary-queue:save-summary:g1:1': child }),
   }) as never;
 
 const message: BroadcastMessage = {
