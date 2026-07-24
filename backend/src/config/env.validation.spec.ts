@@ -33,9 +33,9 @@ describe('validateEnv — Phase 5 worker concurrency', () => {
   it('applies defaults for the per-worker concurrency knobs', () => {
     const cfg = validateEnv(base);
     expect(cfg.SCHEDULER_WORKER_CONCURRENCY).toBe(1);
-    expect(cfg.AI_WORKER_CONCURRENCY).toBe(2);
+    expect(cfg.AI_WORKER_CONCURRENCY).toBe(10);
     expect(cfg.SUMMARY_WORKER_CONCURRENCY).toBe(5);
-    expect(cfg.NOTIFICATION_WORKER_CONCURRENCY).toBe(10);
+    expect(cfg.NOTIFICATION_WORKER_CONCURRENCY).toBe(3);
   });
 
   it('coerces a concurrency knob from a string', () => {

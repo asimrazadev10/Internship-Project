@@ -17,7 +17,7 @@ import type { GenerateResult } from './stage.types';
 // how many jobs run in parallel per PROCESS, so scaling to N ai-worker instances would still let
 // through N * concurrency concurrent Gemini calls with no limiter.
 @Processor(AI_QUEUE, {
-  concurrency: concurrencyFromEnv('AI_WORKER_CONCURRENCY', 2),
+  concurrency: concurrencyFromEnv('AI_WORKER_CONCURRENCY', 10),
   limiter: { max: 10, duration: 60_000 },
 })
 export class GenerateProcessor extends WorkerHost {

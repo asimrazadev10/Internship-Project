@@ -138,7 +138,7 @@ export class EnvironmentVariables {
   @Type(() => Number)
   @IsInt({ message: 'AI_WORKER_CONCURRENCY must be an integer' })
   @Min(1)
-  AI_WORKER_CONCURRENCY = 2;
+  AI_WORKER_CONCURRENCY = 10;
 
   @Type(() => Number)
   @IsInt({ message: 'SUMMARY_WORKER_CONCURRENCY must be an integer' })
@@ -148,7 +148,7 @@ export class EnvironmentVariables {
   @Type(() => Number)
   @IsInt({ message: 'NOTIFICATION_WORKER_CONCURRENCY must be an integer' })
   @Min(1)
-  NOTIFICATION_WORKER_CONCURRENCY = 10;
+  NOTIFICATION_WORKER_CONCURRENCY = 3;
 }
 
 export function validateEnv(

@@ -16,7 +16,7 @@ import type { SaveResult } from './stage.types';
  * refetch and find it — a dropped broadcast is recoverable, never data loss.
  */
 @Processor(NOTIFICATION_QUEUE, {
-  concurrency: concurrencyFromEnv('NOTIFICATION_WORKER_CONCURRENCY', 10),
+  concurrency: concurrencyFromEnv('NOTIFICATION_WORKER_CONCURRENCY', 3),
 })
 export class PublishProcessor extends WorkerHost {
   private readonly logger = new Logger(PublishProcessor.name);
