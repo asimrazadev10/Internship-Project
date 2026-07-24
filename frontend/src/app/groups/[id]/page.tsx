@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import { AppHeader } from "@/components/app-header";
 import { MessageComposer } from "@/components/messages/message-composer";
@@ -13,6 +13,13 @@ import { useRequireAuth } from "@/lib/auth/use-require-auth";
 import { useGroup } from "@/lib/queries/groups";
 import { useSocket } from "@/lib/socket/socket-provider";
 import { useGroupRoom } from "@/lib/socket/use-group-room";
+import { useTyping } from "@/lib/socket/use-typing";
+
+function typingLabel(names: string[]): string {
+  if (names.length === 1) return `${names[0]} is typing…`;
+  if (names.length === 2) return `${names[0]} and ${names[1]} are typing…`;
+  return "Several people are typing…";
+}
 
 /**
  * A group's chat view: a compact header (name, member count, a connection-aware Live pill, and a
@@ -26,7 +33,15 @@ export default function GroupPage() {
   const { data: group, isLoading, isError, error } = useGroup(groupId);
   const { connected } = useSocket();
   useGroupRoom(groupId);
+  const { typingUserIds, notifyTyping, stopTyping } = useTyping(groupId);
   const [copied, setCopied] = useState(false);
+
+  const typingNames = useMemo(() => {
+    if (!group) return [];
+    return typingUserIds
+      .map((id) => group.members.find((m) => m.user.id === id)?.user.name)
+      .filter((n): n is string => Boolean(n));
+  }, [typingUserIds, group]);
 
   function copyId() {
     void navigator.clipboard.writeText(groupId).then(() => {
@@ -102,7 +117,19 @@ export default function GroupPage() {
         {group && (
           <>
             <MessageList groupId={groupId} />
-            <MessageComposer groupId={groupId} />
+            {typingNames.length > 0 && (
+              <p
+                aria-live="polite"
+                className="px-1 pb-1 text-xs text-muted animate-pulse"
+              >
+                {typingLabel(typingNames)}
+              </p>
+            )}
+            <MessageComposer
+              groupId={groupId}
+              onType={notifyTyping}
+              onStopTyping={stopTyping}
+            />
           </>
         )}
 

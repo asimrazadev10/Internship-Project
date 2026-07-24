@@ -134,6 +134,38 @@ export class ChatGateway
   }
 
   /**
+   * Typing indicators — ephemeral, no DB. Relayed only if this socket is actually in the group's
+   * room (it got there via join_group, which already checked membership), so there is no
+   * per-keystroke database hit. `socket.to(room)` excludes the sender, so you never see your own
+   * "typing…". The client throttles these to one start + one stop per typing burst.
+   */
+  @SubscribeMessage('typing_start')
+  handleTypingStart(
+    @ConnectedSocket() socket: AuthedSocket,
+    @MessageBody() body: { groupId?: string },
+  ): void {
+    this.relayTyping(socket, body?.groupId, true);
+  }
+
+  @SubscribeMessage('typing_stop')
+  handleTypingStop(
+    @ConnectedSocket() socket: AuthedSocket,
+    @MessageBody() body: { groupId?: string },
+  ): void {
+    this.relayTyping(socket, body?.groupId, false);
+  }
+
+  private relayTyping(
+    socket: AuthedSocket,
+    groupId: string | undefined,
+    typing: boolean,
+  ): void {
+    if (!groupId || !socket.rooms.has(roomFor(groupId))) return;
+    const { userId } = socket.data as AuthData;
+    socket.to(roomFor(groupId)).emit('user_typing', { groupId, userId, typing });
+  }
+
+  /**
    * Persist-then-broadcast: this handler only writes the row (via MessagesService.create, which
    * emits MESSAGE_CREATED). It never touches `server` directly — the @OnEvent handler below is
    * the single broadcast point, so a socket send and a REST POST end up on the exact same path.

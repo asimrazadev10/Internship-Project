@@ -5,7 +5,15 @@ import { useState } from "react";
 import { useSocket } from "@/lib/socket/socket-provider";
 
 /** Message input. Enter sends; Shift+Enter newlines. Capped at 4000 like the backend DTO. */
-export function MessageComposer({ groupId }: { groupId: string }) {
+export function MessageComposer({
+  groupId,
+  onType,
+  onStopTyping,
+}: {
+  groupId: string;
+  onType?: () => void;
+  onStopTyping?: () => void;
+}) {
   const { socket, connected } = useSocket();
   const [content, setContent] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -26,6 +34,7 @@ export function MessageComposer({ groupId }: { groupId: string }) {
           if (err) return setError("Couldn't reach the server");
           if (!ack?.ok) return setError(ack?.error ?? "Couldn't send message");
           setContent("");
+          onStopTyping?.();
           // The message arrives via the new_message broadcast (to the sender too).
         },
       );
@@ -51,7 +60,10 @@ export function MessageComposer({ groupId }: { groupId: string }) {
           rows={1}
           maxLength={4000}
           value={content}
-          onChange={(e) => setContent(e.target.value)}
+          onChange={(e) => {
+            setContent(e.target.value);
+            onType?.();
+          }}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey) {
               e.preventDefault();
