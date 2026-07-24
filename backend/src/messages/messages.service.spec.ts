@@ -43,6 +43,22 @@ describe('MessagesService.createAiSummary', () => {
   });
 });
 
+describe('MessagesService.persistAiSummary', () => {
+  it('persists an AI_SUMMARY with null sender and does NOT emit message.created', async () => {
+    const { service, prisma, emit } = makeService();
+    const msg = await service.persistAiSummary('g1', 'summary text');
+
+    expect(prisma.message.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: { groupId: 'g1', senderId: null, content: 'summary text', type: MessageType.AI_SUMMARY },
+      }),
+    );
+    // The broadcast is a separate cross-process stage now; this write must stay silent.
+    expect(emit).not.toHaveBeenCalled();
+    expect(msg.type).toBe(MessageType.AI_SUMMARY);
+  });
+});
+
 describe('MessagesService.findForSummary', () => {
   it('queries only USER messages since the window start, oldest first', async () => {
     const { service, prisma } = makeService();

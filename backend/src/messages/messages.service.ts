@@ -50,6 +50,19 @@ export class MessagesService {
     });
   }
 
+  /**
+   * AI daily summary: persist a message with no human sender, WITHOUT broadcasting. In the
+   * distributed pipeline the broadcast is a separate stage (publish-summary) running in another
+   * process over the Redis emitter, so this write must not emit the in-process MESSAGE_CREATED
+   * event — no gateway lives in the worker to receive it, and double-broadcasting is avoided.
+   */
+  async persistAiSummary(groupId: string, content: string) {
+    return this.prisma.message.create({
+      data: { groupId, senderId: null, content, type: MessageType.AI_SUMMARY },
+      select: MESSAGE_SELECT,
+    });
+  }
+
   /** Single write+emit point so USER and AI_SUMMARY messages both broadcast identically. */
   private async persistAndEmit(data: {
     groupId: string;
