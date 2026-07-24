@@ -112,6 +112,13 @@ model Message {
   editedAt  DateTime?   @db.Timestamptz(3)
   deletedAt DateTime?   @db.Timestamptz(3)
 
+  // Bonus: file uploads. A message may carry one attachment stored in Supabase Storage; the
+  // bytes live in object storage and only the public URL + metadata are kept here. Null for a
+  // plain text message.
+  attachmentUrl  String? @db.Text
+  attachmentName String?
+  attachmentMime String?
+
   group     Group      @relation(fields: [groupId], references: [id], onDelete: Cascade)
   // SetNull, not Cascade: deleting a user must not erase the conversation for everyone else.
   sender    User?      @relation(fields: [senderId], references: [id], onDelete: SetNull)

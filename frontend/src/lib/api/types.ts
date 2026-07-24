@@ -84,6 +84,9 @@ export interface Message {
   deletedAt: string | null;
   sender: { id: string; name: string } | null;
   reactions: Reaction[];
+  attachmentUrl: string | null;
+  attachmentName: string | null;
+  attachmentMime: string | null;
 }
 
 export interface Reaction {

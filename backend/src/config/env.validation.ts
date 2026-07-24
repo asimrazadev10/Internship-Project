@@ -149,6 +149,22 @@ export class EnvironmentVariables {
   @IsInt({ message: 'NOTIFICATION_WORKER_CONCURRENCY must be an integer' })
   @Min(1)
   NOTIFICATION_WORKER_CONCURRENCY = 3;
+
+  // Bonus (file uploads) — Supabase Storage. All optional: the app boots without them and the
+  // upload endpoint returns 503 until they're set. Only these three are needed because the
+  // backend uses the Storage REST API directly (no SDK): the project URL, a service-role key
+  // (server-side only — never shipped to the browser), and the target bucket name.
+  @IsString()
+  @IsOptional()
+  SUPABASE_URL?: string;
+
+  @IsString()
+  @IsOptional()
+  SUPABASE_SERVICE_KEY?: string;
+
+  @IsString()
+  @IsOptional()
+  SUPABASE_BUCKET?: string;
 }
 
 export function validateEnv(

@@ -18,6 +18,9 @@ export interface BroadcastMessage {
   senderId: string | null;
   sender: { id: string; name: string } | null;
   reactions: { emoji: string; userId: string }[];
+  attachmentUrl: string | null;
+  attachmentName: string | null;
+  attachmentMime: string | null;
 }
 
 export interface MessageCreatedPayload {

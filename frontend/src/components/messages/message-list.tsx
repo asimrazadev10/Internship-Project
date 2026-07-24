@@ -71,6 +71,40 @@ function ReactionBar({
   );
 }
 
+function Attachment({
+  url,
+  name,
+  mime,
+}: {
+  url: string;
+  name: string | null;
+  mime: string | null;
+}) {
+  if (mime?.startsWith("image/")) {
+    return (
+      <a href={url} target="_blank" rel="noopener noreferrer" className="block">
+        {/* eslint-disable-next-line @next/next/no-img-element -- external Supabase URL; next/image would need per-host config */}
+        <img
+          src={url}
+          alt={name ?? "attachment"}
+          className="max-h-64 max-w-full rounded-xl object-cover"
+        />
+      </a>
+    );
+  }
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="inline-flex items-center gap-2 rounded-xl border border-line bg-surface px-3 py-2 text-sm text-ink transition hover:border-line-strong"
+    >
+      <span aria-hidden>📄</span>
+      <span className="max-w-[16rem] truncate">{name ?? "Download file"}</span>
+    </a>
+  );
+}
+
 function MessageRow({
   message,
   isOwn,
@@ -198,11 +232,20 @@ function MessageRow({
           </div>
         ) : (
           <div
-            className={`whitespace-pre-wrap break-words rounded-2xl px-3.5 py-2 text-sm shadow-sm ${
+            className={`flex flex-col gap-2 rounded-2xl px-3.5 py-2 text-sm shadow-sm ${
               isOwn ? "rounded-br-md bg-brand text-on-brand" : "rounded-bl-md bg-surface text-ink"
             }`}
           >
-            {message.content}
+            {message.attachmentUrl && (
+              <Attachment
+                url={message.attachmentUrl}
+                name={message.attachmentName}
+                mime={message.attachmentMime}
+              />
+            )}
+            {message.content && (
+              <p className="whitespace-pre-wrap break-words">{message.content}</p>
+            )}
           </div>
         )}
 

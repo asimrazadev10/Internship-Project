@@ -49,6 +49,25 @@ export async function sendMessage(
   return data.data;
 }
 
+/**
+ * Upload a file as a message. Sends multipart/form-data; axios sets the boundary automatically.
+ * The created message (with its attachment URL) also arrives via the new_message broadcast.
+ */
+export async function uploadFile(
+  groupId: string,
+  file: File,
+  content = "",
+): Promise<Message> {
+  const form = new FormData();
+  form.append("file", file);
+  if (content) form.append("content", content);
+  const { data } = await api.post<ApiSuccess<Message>>(
+    `/groups/${groupId}/messages/upload`,
+    form,
+  );
+  return data.data;
+}
+
 /** Edit your own message. The updated message is also broadcast live via message_updated. */
 export async function editMessage(
   groupId: string,

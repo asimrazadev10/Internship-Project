@@ -18,8 +18,14 @@ describe('NotificationPublisher', () => {
       content: 'digest',
       type: MessageType.AI_SUMMARY,
       createdAt: new Date(),
+      editedAt: null,
+      deletedAt: null,
       senderId: null,
       sender: null,
+      reactions: [],
+      attachmentUrl: null,
+      attachmentName: null,
+      attachmentMime: null,
     };
     publisher.broadcastNewMessage(message);
 

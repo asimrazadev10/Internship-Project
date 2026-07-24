@@ -34,6 +34,9 @@ const MESSAGE_SELECT = {
   senderId: true,
   sender: { select: { id: true, name: true } },
   reactions: { select: { emoji: true, userId: true } },
+  attachmentUrl: true,
+  attachmentName: true,
+  attachmentMime: true,
 } as const;
 
 @Injectable()
@@ -49,6 +52,28 @@ export class MessagesService {
       senderId,
       content,
       type: MessageType.USER,
+    });
+  }
+
+  /**
+   * Create a message that carries an uploaded file. The bytes are already in object storage; this
+   * persists the URL + metadata and broadcasts exactly like a text message, so attachments stream
+   * live and appear in history through the same path.
+   */
+  async createWithAttachment(
+    groupId: string,
+    senderId: string,
+    content: string,
+    attachment: { url: string; name: string; mime: string },
+  ) {
+    return this.persistAndEmit({
+      groupId,
+      senderId,
+      content,
+      type: MessageType.USER,
+      attachmentUrl: attachment.url,
+      attachmentName: attachment.name,
+      attachmentMime: attachment.mime,
     });
   }
 
@@ -120,6 +145,9 @@ export class MessagesService {
     senderId: string | null;
     content: string;
     type: MessageType;
+    attachmentUrl?: string;
+    attachmentName?: string;
+    attachmentMime?: string;
   }) {
     const message = await this.prisma.message.create({
       data,

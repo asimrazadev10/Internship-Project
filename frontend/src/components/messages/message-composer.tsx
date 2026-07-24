@@ -1,8 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 
+import { uploadFile } from "@/lib/api/messages";
+import { getApiErrorMessage } from "@/lib/api/error";
 import { useSocket } from "@/lib/socket/socket-provider";
+
+const ACCEPT = "image/png,image/jpeg,image/gif,image/webp,application/pdf";
 
 /** Message input. Enter sends; Shift+Enter newlines. Capped at 4000 like the backend DTO. */
 export function MessageComposer({
@@ -18,6 +22,26 @@ export function MessageComposer({
   const [content, setContent] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  async function onPickFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow re-picking the same file later
+    if (!file || uploading) return;
+    setUploading(true);
+    setError(null);
+    try {
+      await uploadFile(groupId, file, content.trim());
+      setContent("");
+      onStopTyping?.();
+      // The message (with its attachment) arrives via the new_message broadcast.
+    } catch (err) {
+      setError(getApiErrorMessage(err, "Couldn't upload file"));
+    } finally {
+      setUploading(false);
+    }
+  }
 
   function submit() {
     const trimmed = content.trim();
@@ -54,6 +78,23 @@ export function MessageComposer({
           submit();
         }}
       >
+        <input
+          ref={fileRef}
+          type="file"
+          accept={ACCEPT}
+          onChange={onPickFile}
+          className="hidden"
+        />
+        <button
+          type="button"
+          onClick={() => fileRef.current?.click()}
+          disabled={uploading}
+          title="Attach a file (image or PDF, up to 5 MB)"
+          aria-label="Attach a file"
+          className="shrink-0 rounded-xl px-2.5 py-2 text-lg text-muted transition hover:bg-surface-2 hover:text-ink disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {uploading ? "…" : "📎"}
+        </button>
         <textarea
           aria-label="Message"
           placeholder="Write a message…"
