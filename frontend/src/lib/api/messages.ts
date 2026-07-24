@@ -25,6 +25,18 @@ export async function getMessages(
   return { data: data.data, meta: data.meta as PaginationMeta };
 }
 
+/** Search a group's messages by content (case-insensitive), newest first. */
+export async function searchMessages(
+  groupId: string,
+  q: string,
+): Promise<Message[]> {
+  const { data } = await api.get<ApiSuccess<Message[]>>(
+    `/groups/${groupId}/messages/search`,
+    { params: { q } },
+  );
+  return data.data;
+}
+
 /** Post a message to a group. */
 export async function sendMessage(
   groupId: string,

@@ -16,6 +16,7 @@ import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 import { GroupMemberGuard } from '../common/guards/group-member.guard';
 import { ParseUuidPipe } from '../common/pipes/parse-uuid.pipe';
 import { CreateMessageDto } from './dto/create-message.dto';
+import { SearchMessagesDto } from './dto/search-messages.dto';
 import { MessagesService } from './messages.service';
 
 /**
@@ -48,6 +49,14 @@ export class MessagesController {
   ) {
     // Returning { data, meta } signals the ResponseInterceptor to lift meta into the envelope.
     return this.messagesService.findPage(groupId, query.limit, query.cursor);
+  }
+
+  @Get('search')
+  search(
+    @Param('id', ParseUuidPipe) groupId: string,
+    @Query() query: SearchMessagesDto,
+  ) {
+    return this.messagesService.search(groupId, query.q);
   }
 
   @Patch(':messageId')

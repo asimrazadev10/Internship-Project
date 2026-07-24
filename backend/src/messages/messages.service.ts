@@ -144,6 +144,25 @@ export class MessagesService {
     });
   }
 
+  /**
+   * Search a group's USER messages by content (case-insensitive substring), newest first, capped.
+   * Deleted messages are excluded. A substring match keeps it simple and dependency-free; a Postgres
+   * full-text (tsvector + GIN) index would be the next step for large histories.
+   */
+  search(groupId: string, q: string) {
+    return this.prisma.message.findMany({
+      where: {
+        groupId,
+        type: MessageType.USER,
+        deletedAt: null,
+        content: { contains: q, mode: 'insensitive' },
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: 50,
+      select: MESSAGE_SELECT,
+    });
+  }
+
   /** Idempotency guard: has an AI_SUMMARY already been posted for this group in the window? */
   async hasSummarySince(groupId: string, since: Date): Promise<boolean> {
     const count = await this.prisma.message.count({

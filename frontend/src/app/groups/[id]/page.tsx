@@ -7,6 +7,7 @@ import { useMemo, useState } from "react";
 import { AppHeader } from "@/components/app-header";
 import { MessageComposer } from "@/components/messages/message-composer";
 import { MessageList } from "@/components/messages/message-list";
+import { MessageSearch } from "@/components/messages/message-search";
 import { Avatar } from "@/components/ui/avatar";
 import { getApiErrorMessage } from "@/lib/api/error";
 import { useRequireAuth } from "@/lib/auth/use-require-auth";
@@ -120,6 +121,8 @@ export default function GroupPage() {
               </button>
             </div>
           )}
+
+          {group && <MessageSearch groupId={groupId} />}
         </div>
 
         {group && (
