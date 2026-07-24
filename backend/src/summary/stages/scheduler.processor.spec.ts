@@ -34,6 +34,15 @@ describe('SchedulerProcessor', () => {
     expect(flowAdd).not.toHaveBeenCalled();
   });
 
+  it('still enqueues the next group when flow.add rejects for an earlier one', async () => {
+    const { processor, flowAdd } = make();
+    flowAdd.mockRejectedValueOnce(new Error('redis blip'));
+    await processor.process({ name: JOB_SCHEDULER_TICK, data: {} } as never);
+
+    expect(flowAdd).toHaveBeenCalledTimes(2);
+    expect(flowAdd.mock.calls[1][0].children[0].children[0].data.groupId).toBe('g2');
+  });
+
   it('registers the repeatable scheduler on bootstrap', async () => {
     const { processor, queue } = make();
     await processor.onApplicationBootstrap();

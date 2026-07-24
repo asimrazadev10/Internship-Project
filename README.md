@@ -160,15 +160,61 @@ when new messages arrive between page requests and is O(log n) at any depth.
 
 ---
 
-## AI daily summaries (Phase 4)
+## AI daily summaries (Phase 4 → distributed in Phase 5)
 
-Every `SUMMARY_INTERVAL_MS` (default 24h), an in-process **BullMQ** scheduler finds groups with
-activity in the last `SUMMARY_WINDOW_MS` and enqueues one `group-summary` job per group — one job
-per group, so a Gemini failure/retry in one group can never block another. Each job fetches that
+Every `SUMMARY_INTERVAL_MS` (default 24h), a scheduler finds groups with activity in the last
+`SUMMARY_WINDOW_MS` and fans out one summary pipeline per active group — one pipeline per group,
+so a Gemini failure/retry in one group can never block another. Each pipeline fetches that
 window's messages, summarizes them with **Gemini** (via the Vercel AI SDK), and posts the result
 back as a normal message (`type: AI_SUMMARY`, `senderId: null`) through the same `MessagesService`
-path chat messages already use — so it broadcasts live over the Phase 3 socket pipeline with
-**zero new transport code**.
+path chat messages already use — so it broadcasts live to clients with **zero new transport code**
+on the persistence side.
+
+### Phase 5 architecture — distributed queues, workers, and Flows
+
+Phase 4 ran everything in-process inside the main API. Phase 5 splits it into **4 standalone
+worker processes**, each draining its own BullMQ queue:
+
+| Queue | Worker script | Stage |
+|---|---|---|
+| `summary-scheduler` | `worker:scheduler` | finds active groups, fans out one Flow per group |
+| `summary-generate` | `worker:ai` | fetches messages + calls Gemini (skip logic lives here) |
+| `summary-save` | `worker:summary` | persists the `AI_SUMMARY` row |
+| `summary-publish` | `worker:notification` | broadcasts the persisted row to clients |
+
+Each active group gets **one BullMQ Flow** (`FlowProducer`), not four independent jobs. A Flow's
+root is the *last* stage to run; children run first and each parent reads its result via
+`job.getChildrenValues()`. Concretely:
+
+```
+publish-summary (root, summary-publish queue)
+└── save-summary (summary-save queue)
+    └── generate-ai-summary (leaf, summary-generate queue)
+```
+
+`generate` runs first (leaf), `save` reads its return value and persists, `publish` reads save's
+result and broadcasts — so persist-then-broadcast ordering falls out of the Flow shape for free.
+A permanent failure at any stage (`failParentOnFailure`) fails the whole flow cleanly instead of
+leaving parents stuck in waiting-children.
+
+Because `publish` now runs in a **different process** than the main API (which still holds the
+Socket.IO connections), it can't call `server.emit()` directly. It broadcasts instead via
+**`@socket.io/redis-emitter`**, which publishes onto the same Redis pub/sub channel the main app's
+Phase 3 **`@socket.io/redis-adapter`** subscribes to — so the broadcast crosses process boundaries
+over Redis and reaches connected clients exactly like any other socket event.
+
+### Running the workers
+
+```bash
+npm run worker:scheduler      # summary-scheduler queue
+npm run worker:ai              # summary-generate queue (Gemini calls)
+npm run worker:summary         # summary-save queue
+npm run worker:notification    # summary-publish queue
+npm run workers:all            # all four, concurrently, in one terminal (dev convenience)
+```
+
+The main API process (`npm run start:dev`) no longer runs any summary stage itself — all four
+worker processes must be running for summaries to be generated and broadcast.
 
 ### Get a free key
 
@@ -185,22 +231,49 @@ path chat messages already use — so it broadcasts live over the Phase 3 socket
 | `GEMINI_MODEL` | Gemini model id | `gemini-2.0-flash` |
 | `SUMMARY_INTERVAL_MS` | How often the scheduler tick fires | `86400000` (24h) |
 | `SUMMARY_WINDOW_MS` | How far back each summary looks | `86400000` (24h) |
+| `SCHEDULER_WORKER_CONCURRENCY` | Concurrent jobs, `worker:scheduler` | `1` |
+| `AI_WORKER_CONCURRENCY` | Concurrent jobs, `worker:ai` (paired with the Gemini rate limiter below) | `2` |
+| `SUMMARY_WORKER_CONCURRENCY` | Concurrent jobs, `worker:summary` | `5` |
+| `NOTIFICATION_WORKER_CONCURRENCY` | Concurrent jobs, `worker:notification` | `10` |
 
 ### Running it
 
-The scheduler runs **in-process** — no separate worker process in this phase (Phase 5 splits
-workers into their own processes). It registers a repeatable BullMQ job on app start
-(`onApplicationBootstrap`) and fires every `SUMMARY_INTERVAL_MS`.
+The scheduler runs in its **own worker process** (`worker:scheduler`) — there is no in-process
+scheduling in this phase; all four worker processes above must be running (see
+[Running the workers](#running-the-workers)). The scheduler worker registers a repeatable BullMQ
+job on boot (`onApplicationBootstrap`) and fires every `SUMMARY_INTERVAL_MS`.
 
 To demo without waiting a full day, either:
-- set `SUMMARY_INTERVAL_MS=60000` (1 minute) in `.env` and restart the API, **or**
-- `POST /summaries/run` (requires `Authorization: Bearer <access token>`) enqueues the same
-  scheduler job immediately — `202 { "data": { "enqueued": true } }`.
+- set `SUMMARY_INTERVAL_MS=60000` (1 minute) in `.env` and restart `worker:scheduler`, **or**
+- `POST /summaries/run` (requires `Authorization: Bearer <access token>`, served by the main API)
+  enqueues the same scheduler job immediately — `202 { "data": { "enqueued": true } }`.
 
 Send a few messages in a group, wait for the next tick (or trigger it manually), and an
 `AI_SUMMARY` message appears in that group's chat live, via the same `new_message` socket
 broadcast as any other message. A group with no new messages in the window, or one already
 summarized for the current window, is skipped.
+
+### Deviations from CLAUDE.md §6/§9 (and why)
+
+- **Queue names** — `summary-scheduler`/`summary-generate`/`summary-save`/`summary-publish`
+  instead of §6's `scheduler-queue`/`ai-queue`/`summary-queue`/`notification-queue`. Namespacing
+  every queue under the `summary-` feature prefix avoids Redis key collisions with other features
+  that might one day add their own `ai-queue`/`summary-queue`. The worker script names
+  (`worker:scheduler`/`worker:ai`/`worker:summary`/`worker:notification`) and the concurrency
+  env-var names (`*_WORKER_CONCURRENCY`) still match §9 exactly.
+- **Linear 3-stage Flow** (fetch folded into `generate`) instead of §6's flat 4-child sketch with
+  a separate `fetch-messages` job. Folding fetch into generate avoids shuttling a whole message
+  transcript through Redis as job data between two stages, co-locates all the skip logic
+  (`exists`/`empty`/`blank`) in one place, and — more fundamentally — a nested parent→child chain
+  is the correct BullMQ shape for a strictly *sequential* dependency (each stage needs the
+  previous stage's output); §6's flat list of four children under one parent reads as four
+  **parallel siblings**, which is not what this pipeline needs.
+- **Concurrency values** — `AI_WORKER_CONCURRENCY=2` / `NOTIFICATION_WORKER_CONCURRENCY=10`
+  instead of §9's `10`/`3`. AI generation is bound by Gemini's free-tier rate limit, so it's kept
+  low and paired with the Redis-coordinated `limiter` BullMQ option on `GenerateProcessor`, which
+  caps the global Gemini call rate across all `worker:ai` instances; publishing is just
+  broadcasting an already-persisted message, which is cheap, so it's kept high.
+  These are the code's actual defaults, and `.env.example` is already aligned to them.
 
 ---
 
@@ -216,8 +289,9 @@ backend/                 # NestJS API
     users/               # user persistence + serialization entity
     groups/              # groups + membership + join
     messages/            # message create + cursor-paginated history
-    summary/             # Phase 4: BullMQ scheduler + per-group summary jobs
+    summary/             # Phase 4/5: summary service + per-stage BullMQ processors/Flow
     ai/                  # Phase 4: Gemini wrapper (Vercel AI SDK), vendor isolated
+    workers/             # Phase 5: standalone worker entry points (one per queue)
   prisma/
     schema.prisma        # data model
     migrations/          # versioned schema changes

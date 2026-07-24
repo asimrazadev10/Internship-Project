@@ -41,6 +41,14 @@ describe('buildSummaryFlow', () => {
     expect(gen.opts?.attempts).toBe(3);
     expect(gen.opts?.backoff).toEqual({ type: 'exponential', delay: 2000 });
   });
+
+  it('applies the same bounded-retry policy to the save and publish nodes', () => {
+    const save = flow.children![0];
+    expect(save.opts?.attempts).toBe(3);
+    expect(save.opts?.backoff).toEqual({ type: 'exponential', delay: 2000 });
+    expect(flow.opts?.attempts).toBe(3);
+    expect(flow.opts?.backoff).toEqual({ type: 'exponential', delay: 2000 });
+  });
 });
 
 describe('concurrencyFromEnv', () => {
@@ -52,6 +60,14 @@ describe('concurrencyFromEnv', () => {
   it('falls back when unset or invalid', () => {
     expect(concurrencyFromEnv('TEST_CONC', 2)).toBe(2);
     process.env.TEST_CONC = 'abc';
+    expect(concurrencyFromEnv('TEST_CONC', 2)).toBe(2);
+  });
+  it('falls back for zero, negative, and non-integer values', () => {
+    process.env.TEST_CONC = '0';
+    expect(concurrencyFromEnv('TEST_CONC', 2)).toBe(2);
+    process.env.TEST_CONC = '-3';
+    expect(concurrencyFromEnv('TEST_CONC', 2)).toBe(2);
+    process.env.TEST_CONC = '3.5';
     expect(concurrencyFromEnv('TEST_CONC', 2)).toBe(2);
   });
 });

@@ -12,7 +12,14 @@ import type { GenerateResult } from './stage.types';
  * skip logic lives here; the reason is returned so the parents can no-op cleanly. A thrown Gemini
  * error retries only this child (attempts/backoff) and, on final failure, fails the whole flow.
  */
-@Processor(AI_QUEUE, { concurrency: concurrencyFromEnv('AI_WORKER_CONCURRENCY', 2) })
+// `limiter` is Redis-coordinated across every ai-worker instance on this queue — it caps the
+// GLOBAL Gemini call rate for the free tier. `concurrency` alone cannot do this: it only bounds
+// how many jobs run in parallel per PROCESS, so scaling to N ai-worker instances would still let
+// through N * concurrency concurrent Gemini calls with no limiter.
+@Processor(AI_QUEUE, {
+  concurrency: concurrencyFromEnv('AI_WORKER_CONCURRENCY', 2),
+  limiter: { max: 10, duration: 60_000 },
+})
 export class GenerateProcessor extends WorkerHost {
   private readonly logger = new Logger(GenerateProcessor.name);
 

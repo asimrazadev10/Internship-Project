@@ -46,14 +46,22 @@ export class SchedulerProcessor extends WorkerHost implements OnApplicationBoots
     if (job.name !== JOB_SCHEDULER_TICK) return;
 
     const windowMs = this.config.getOrThrow<number>('SUMMARY_WINDOW_MS');
-    const since = new Date(Date.now() - windowMs);
-    const bucketStart = Math.floor(Date.now() / windowMs) * windowMs;
+    const now = Date.now();
+    const since = new Date(now - windowMs);
+    const bucketStart = Math.floor(now / windowMs) * windowMs;
 
     const groups = await this.summary.findActiveGroups(since);
     this.logger.log(`scheduler: ${groups.length} active group(s)`);
 
     for (const g of groups) {
-      await this.flow.add(buildSummaryFlow(g.id, since, bucketStart));
+      try {
+        await this.flow.add(buildSummaryFlow(g.id, since, bucketStart));
+      } catch (err) {
+        // One group's flow.add failure (e.g. a transient Redis blip) must not skip the rest of
+        // the tick — log and move on so every other active group still gets summarized.
+        this.logger.error(`group ${g.id}: failed to enqueue summary flow`, err as Error);
+        continue;
+      }
     }
   }
 }

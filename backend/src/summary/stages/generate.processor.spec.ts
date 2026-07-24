@@ -37,6 +37,7 @@ describe('GenerateProcessor', () => {
     const { processor, messages, ai } = make();
     messages.hasSummarySince.mockResolvedValue(true);
     const res = await processor.process(job());
+    expect(messages.findForSummary).not.toHaveBeenCalled();
     expect(ai.summarize).not.toHaveBeenCalled();
     expect(res).toEqual({ skipped: true, reason: 'exists' });
   });

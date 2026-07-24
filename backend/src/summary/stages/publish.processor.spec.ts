@@ -41,4 +41,12 @@ describe('PublishProcessor', () => {
     expect(publisher.broadcastNewMessage).not.toHaveBeenCalled();
     expect(res).toEqual({ published: false });
   });
+
+  it('no-ops when there is no child value at all', async () => {
+    const { processor, publisher } = make();
+    const job = { getChildrenValues: jest.fn().mockResolvedValue({}) } as never;
+    const res = await processor.process(job);
+    expect(publisher.broadcastNewMessage).not.toHaveBeenCalled();
+    expect(res).toEqual({ published: false });
+  });
 });
