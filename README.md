@@ -253,6 +253,68 @@ Send a few messages in a group, wait for the next tick (or trigger it manually),
 broadcast as any other message. A group with no new messages in the window, or one already
 summarized for the current window, is skipped.
 
+### Demo — run the whole pipeline end to end
+
+Prerequisites: `docker compose up -d` (Postgres + Redis), a real `GOOGLE_GENERATIVE_AI_API_KEY` in
+`backend/.env` (see [Get a free key](#get-a-free-key)), and a build — the workers run from `dist/`,
+so run `npm run build` first. Have the frontend open (or any socket client joined to a group) so you
+can watch the Daily Summary card arrive live.
+
+**Full run — API + all four workers.** One terminal for the API, plus one per worker (or collapse
+the four workers into a single terminal with `workers:all`):
+
+```bash
+# terminal 1 — the API (serves REST + holds the Socket.IO connections)
+cd backend && npm run start:prod           # or start:dev
+
+# terminals 2-5 — the four stage workers, each its own process
+npm run worker:scheduler
+npm run worker:ai
+npm run worker:summary
+npm run worker:notification
+# …or all four in one terminal:
+npm run workers:all
+```
+
+Then seed a group and trigger a run instead of waiting 24h:
+
+```bash
+# 1. sign in and copy the access token (.data.accessToken)
+curl -s -X POST http://localhost:3000/auth/login \
+  -H 'content-type: application/json' \
+  -d '{"email":"you@example.com","password":"your-password"}'
+
+# 2. send a few messages in a group (via the UI or POST /groups/:id/messages) so the
+#    window has something to summarize
+
+# 3. trigger the pipeline now
+curl -X POST http://localhost:3000/summaries/run -H "Authorization: Bearer <ACCESS_TOKEN>"
+#    → 202 { "data": { "enqueued": true } }
+```
+
+The scheduler worker fans out one Flow for the active group; `worker:ai` → `worker:summary` →
+`worker:notification` drain it in order, and the `AI_SUMMARY` card appears in that group's chat
+live. (Or set `SUMMARY_INTERVAL_MS=60000` in `.env`, restart `worker:scheduler`, and just wait a
+minute.)
+
+**Durable hand-off demo (memory-light — one worker at a time).** Every job and its parent/child
+dependency state lives in **Redis**, not in a worker's memory, so you can run the stages one at a
+time and watch each queue drain — the clearest way to *show* the pipeline is genuinely distributed,
+and it keeps only 1–2 Node processes alive at once (handy on a small machine):
+
+```bash
+# API already running; a group already has recent messages.
+npm run worker:scheduler         # leave running, then POST /summaries/run → it builds the Flow.
+                                 # generate/save/publish jobs now sit in their Redis queues, waiting.
+npm run worker:ai                # drains generate-ai-summary (Gemini); the save job now waits → Ctrl-C
+npm run worker:summary           # drains save-summary (row persisted); the publish job now waits → Ctrl-C
+npm run worker:notification      # drains publish-summary → connected clients get the Daily Summary card
+```
+
+Each stage's job waits in its queue until the worker that drains it is started, so the summary still
+completes in the correct order even though the four workers were never alive at the same time — that
+durability is the whole point of pushing the work through Redis-backed queues.
+
 ### Deviations from CLAUDE.md §6/§9 (and why)
 
 - **Queue names** — `summary-scheduler`/`summary-generate`/`summary-save`/`summary-publish`
