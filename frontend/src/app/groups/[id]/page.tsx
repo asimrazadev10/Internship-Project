@@ -13,6 +13,7 @@ import { useRequireAuth } from "@/lib/auth/use-require-auth";
 import { useGroup } from "@/lib/queries/groups";
 import { useSocket } from "@/lib/socket/socket-provider";
 import { useGroupRoom } from "@/lib/socket/use-group-room";
+import { usePresence } from "@/lib/socket/use-presence";
 import { useTyping } from "@/lib/socket/use-typing";
 
 function typingLabel(names: string[]): string {
@@ -34,6 +35,7 @@ export default function GroupPage() {
   const { connected } = useSocket();
   useGroupRoom(groupId);
   const { typingUserIds, notifyTyping, stopTyping } = useTyping(groupId);
+  const onlineUserIds = usePresence(groupId);
   const [copied, setCopied] = useState(false);
 
   const typingNames = useMemo(() => {
@@ -90,6 +92,12 @@ export default function GroupPage() {
                       {group.members.length} member
                       {group.members.length === 1 ? "" : "s"}
                     </span>
+                    {onlineUserIds.length > 0 && (
+                      <span className="inline-flex items-center gap-1 text-live">
+                        <span className="h-1.5 w-1.5 rounded-full bg-live" />
+                        {onlineUserIds.length} online
+                      </span>
+                    )}
                     <span
                       className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-mono text-[11px] uppercase tracking-wide ${
                         connected ? "bg-live/12 text-live" : "bg-muted/12 text-muted"

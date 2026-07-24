@@ -82,6 +82,15 @@ export class ChatGateway
     // base Socket type's own `data: any` field, so a plain read would be an unsafe member access.
     const { userId } = socket.data as AuthData;
     this.logger.log(`socket ${socket.id} connected as user ${userId}`);
+    // Refresh presence for every group room this socket was in when it goes away. On the
+    // 'disconnecting' event the socket is still listed in its rooms, so exclude it explicitly.
+    socket.on('disconnecting', () => {
+      for (const room of socket.rooms) {
+        if (room.startsWith('group:')) {
+          void this.broadcastPresence(room.slice('group:'.length), socket.id);
+        }
+      }
+    });
   }
 
   handleDisconnect(socket: AuthedSocket): void {
@@ -108,6 +117,7 @@ export class ChatGateway
       this.logger.debug(
         `socket ${socket.id} (user ${userId}) joined ${roomFor(groupId)}`,
       );
+      await this.broadcastPresence(groupId);
       return { ok: true };
     } catch (err) {
       if (err instanceof ForbiddenException) {
@@ -129,6 +139,7 @@ export class ChatGateway
     if (body?.groupId) {
       await socket.leave(roomFor(body.groupId));
       this.logger.debug(`socket ${socket.id} left ${roomFor(body.groupId)}`);
+      await this.broadcastPresence(body.groupId);
     }
     return { ok: true };
   }
@@ -163,6 +174,27 @@ export class ChatGateway
     if (!groupId || !socket.rooms.has(roomFor(groupId))) return;
     const { userId } = socket.data as AuthData;
     socket.to(roomFor(groupId)).emit('user_typing', { groupId, userId, typing });
+  }
+
+  /**
+   * Presence: the distinct users with at least one socket in the group's room. Uses the adapter's
+   * fetchSockets(), which spans nodes under the Redis adapter, so the count is correct multi-node.
+   */
+  private async broadcastPresence(
+    groupId: string,
+    excludeSocketId?: string,
+  ): Promise<void> {
+    const room = roomFor(groupId);
+    const sockets = await this.server.in(room).fetchSockets();
+    const userIds = [
+      ...new Set(
+        sockets
+          .filter((s) => s.id !== excludeSocketId)
+          .map((s) => (s.data as AuthData)?.userId)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    ];
+    this.server.to(room).emit('presence', { groupId, userIds });
   }
 
   /**
