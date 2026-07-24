@@ -20,6 +20,8 @@ import type { MemberJoinedPayload } from '../groups/group-events';
 import { GroupsService } from '../groups/groups.service';
 import { MESSAGE_CREATED } from '../messages/message-events';
 import type { MessageCreatedPayload } from '../messages/message-events';
+import { REACTION_CHANGED } from '../messages/reaction-events';
+import type { ReactionChangedPayload } from '../messages/reaction-events';
 import { MessagesService } from '../messages/messages.service';
 import { roomFor } from './chat.constants';
 import type { AuthData, AuthedSocket } from './ws.types';
@@ -252,5 +254,11 @@ export class ChatGateway
   @OnEvent(MEMBER_JOINED)
   broadcastMemberJoined(payload: MemberJoinedPayload): void {
     this.server.to(roomFor(payload.groupId)).emit('member_joined', payload);
+  }
+
+  /** A message's reactions changed — push the new set to everyone viewing the group. */
+  @OnEvent(REACTION_CHANGED)
+  broadcastReaction(payload: ReactionChangedPayload): void {
+    this.server.to(roomFor(payload.groupId)).emit('reaction_updated', payload);
   }
 }

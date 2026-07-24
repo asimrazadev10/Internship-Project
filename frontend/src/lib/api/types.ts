@@ -80,6 +80,12 @@ export interface Message {
   type: MessageType;
   createdAt: string;
   sender: { id: string; name: string } | null;
+  reactions: Reaction[];
+}
+
+export interface Reaction {
+  emoji: string;
+  userId: string;
 }
 
 /** A page of messages plus its pagination metadata, as returned by GET /groups/:id/messages. */

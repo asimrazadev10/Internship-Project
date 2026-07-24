@@ -3,19 +3,84 @@
 import { useEffect, useRef } from "react";
 
 import { Avatar } from "@/components/ui/avatar";
+import { toggleReaction } from "@/lib/api/messages";
 import { getApiErrorMessage } from "@/lib/api/error";
-import type { Message } from "@/lib/api/types";
+import type { Message, Reaction } from "@/lib/api/types";
 import { useAuth } from "@/lib/auth/auth-context";
 import { useGroupMessages } from "@/lib/queries/messages";
 
+const QUICK_EMOJIS = ["👍", "❤️", "😂", "🎉", "😮", "😢"];
+
 function formatTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
-function MessageRow({ message, isOwn }: { message: Message; isOwn: boolean }) {
+function aggregate(reactions: Reaction[], userId?: string) {
+  const map = new Map<string, { emoji: string; count: number; mine: boolean }>();
+  for (const r of reactions) {
+    const cur = map.get(r.emoji) ?? { emoji: r.emoji, count: 0, mine: false };
+    cur.count += 1;
+    if (r.userId === userId) cur.mine = true;
+    map.set(r.emoji, cur);
+  }
+  return [...map.values()];
+}
+
+function ReactionBar({
+  reactions,
+  currentUserId,
+  isOwn,
+  onReact,
+}: {
+  reactions: Reaction[];
+  currentUserId?: string;
+  isOwn: boolean;
+  onReact: (emoji: string) => void;
+}) {
+  const agg = aggregate(reactions, currentUserId);
+  return (
+    <div className={`mt-1 flex flex-wrap items-center gap-1 ${isOwn ? "justify-end" : ""}`}>
+      {agg.map((r) => (
+        <button
+          key={r.emoji}
+          onClick={() => onReact(r.emoji)}
+          className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-xs transition ${
+            r.mine
+              ? "border-brand bg-brand-soft text-brand-strong"
+              : "border-line bg-surface text-muted hover:border-line-strong"
+          }`}
+        >
+          <span>{r.emoji}</span>
+          <span className="tabular-nums">{r.count}</span>
+        </button>
+      ))}
+      <div className="flex items-center gap-0.5 rounded-full border border-line bg-surface px-1 py-0.5 opacity-0 transition group-hover:opacity-100 focus-within:opacity-100">
+        {QUICK_EMOJIS.map((e) => (
+          <button
+            key={e}
+            onClick={() => onReact(e)}
+            title={`React ${e}`}
+            className="rounded-full px-1 text-xs transition hover:bg-surface-2"
+          >
+            {e}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function MessageRow({
+  message,
+  isOwn,
+  currentUserId,
+  onReact,
+}: {
+  message: Message;
+  isOwn: boolean;
+  currentUserId?: string;
+  onReact: (messageId: string, emoji: string) => void;
+}) {
   if (message.type === "AI_SUMMARY") {
     return (
       <li className="mx-auto w-full max-w-[92%] rounded-2xl border border-brand/40 bg-brand-soft/60 p-4 shadow-sm">
@@ -24,14 +89,12 @@ function MessageRow({ message, isOwn }: { message: Message; isOwn: boolean }) {
           <span>Daily Summary</span>
           <span className="ml-auto text-muted">{formatTime(message.createdAt)}</span>
         </div>
-        <p className="whitespace-pre-wrap break-words text-sm text-ink">
-          {message.content}
-        </p>
+        <p className="whitespace-pre-wrap break-words text-sm text-ink">{message.content}</p>
       </li>
     );
   }
 
-  // System / AI messages have no human sender — centred and quiet.
+  // System messages have no human sender — centred and quiet.
   if (message.senderId === null) {
     return (
       <li className="mx-auto max-w-[80%] rounded-full bg-surface-2 px-3.5 py-1.5 text-center text-xs text-muted">
@@ -43,7 +106,7 @@ function MessageRow({ message, isOwn }: { message: Message; isOwn: boolean }) {
   const senderName = message.sender?.name ?? "Someone";
 
   return (
-    <li className={`flex items-end gap-2.5 ${isOwn ? "flex-row-reverse" : ""}`}>
+    <li className={`group flex items-end gap-2.5 ${isOwn ? "flex-row-reverse" : ""}`}>
       {!isOwn && <Avatar name={senderName} id={message.senderId} size={30} />}
       <div className={`flex max-w-[78%] flex-col gap-0.5 ${isOwn ? "items-end" : "items-start"}`}>
         <div className="flex items-baseline gap-2 px-1 font-mono text-[11px] text-muted">
@@ -52,13 +115,17 @@ function MessageRow({ message, isOwn }: { message: Message; isOwn: boolean }) {
         </div>
         <div
           className={`whitespace-pre-wrap break-words rounded-2xl px-3.5 py-2 text-sm shadow-sm ${
-            isOwn
-              ? "rounded-br-md bg-brand text-on-brand"
-              : "rounded-bl-md bg-surface text-ink"
+            isOwn ? "rounded-br-md bg-brand text-on-brand" : "rounded-bl-md bg-surface text-ink"
           }`}
         >
           {message.content}
         </div>
+        <ReactionBar
+          reactions={message.reactions}
+          currentUserId={currentUserId}
+          isOwn={isOwn}
+          onReact={(emoji) => onReact(message.id, emoji)}
+        />
       </div>
     </li>
   );
@@ -66,20 +133,18 @@ function MessageRow({ message, isOwn }: { message: Message; isOwn: boolean }) {
 
 export function MessageList({ groupId }: { groupId: string }) {
   const { user } = useAuth();
-  const {
-    messages,
-    isLoading,
-    isError,
-    error,
-    hasOlder,
-    loadOlder,
-    isLoadingOlder,
-  } = useGroupMessages(groupId);
+  const { messages, isLoading, isError, error, hasOlder, loadOlder, isLoadingOlder } =
+    useGroupMessages(groupId);
 
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  // Scroll to the bottom when the NEWEST message changes — on first load and when one arrives
-  // (sent or polled in). Keyed on the last id, so loading OLDER history doesn't yank the view.
+  // Toggle a reaction; the UI updates when the reaction_updated broadcast lands (sender included).
+  function react(messageId: string, emoji: string) {
+    void toggleReaction(groupId, messageId, emoji).catch(() => {});
+  }
+
+  // Scroll to the bottom when the NEWEST message changes — keyed on the last id, so loading OLDER
+  // history doesn't yank the view.
   const newestId = messages[messages.length - 1]?.id;
   useEffect(() => {
     bottomRef.current?.scrollIntoView();
@@ -117,9 +182,7 @@ export function MessageList({ groupId }: { groupId: string }) {
         )}
 
         {messages.length === 0 ? (
-          <p className="py-10 text-center text-sm text-muted">
-            No messages yet. Say hello.
-          </p>
+          <p className="py-10 text-center text-sm text-muted">No messages yet. Say hello.</p>
         ) : (
           <ul className="flex flex-col gap-3.5">
             {messages.map((message) => (
@@ -127,6 +190,8 @@ export function MessageList({ groupId }: { groupId: string }) {
                 key={message.id}
                 message={message}
                 isOwn={message.senderId === user?.id}
+                currentUserId={user?.id}
+                onReact={react}
               />
             ))}
           </ul>

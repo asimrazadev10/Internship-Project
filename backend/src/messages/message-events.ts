@@ -12,6 +12,7 @@ export interface BroadcastMessage {
   createdAt: Date;
   senderId: string | null;
   sender: { id: string; name: string } | null;
+  reactions: { emoji: string; userId: string }[];
 }
 
 export interface MessageCreatedPayload {

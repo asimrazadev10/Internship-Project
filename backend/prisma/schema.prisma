@@ -60,6 +60,7 @@ model User {
   messages      Message[]
   createdGroups Group[]        @relation("GroupCreator")
   refreshTokens RefreshToken[]
+  reactions     Reaction[]
 
   @@unique([provider, providerId])
 }
@@ -105,9 +106,10 @@ model Message {
   type      MessageType @default(USER)
   createdAt DateTime    @default(now()) @db.Timestamptz(3)
 
-  group Group @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  group     Group      @relation(fields: [groupId], references: [id], onDelete: Cascade)
   // SetNull, not Cascade: deleting a user must not erase the conversation for everyone else.
-  sender User? @relation(fields: [senderId], references: [id], onDelete: SetNull)
+  sender    User?      @relation(fields: [senderId], references: [id], onDelete: SetNull)
+  reactions Reaction[]
 
   // Keyset pagination. Column order is deliberate: equality predicate (groupId) first, then
   // the range/sort predicate (createdAt), then id purely as a unique tiebreaker so the
@@ -136,5 +138,20 @@ model RefreshToken {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  @@index([userId])
+}
+
+// Bonus feature — message reactions. A user may add a given emoji to a message at most once.
+model Reaction {
+  id        String   @id @default(uuid(7)) @db.Uuid
+  messageId String   @db.Uuid
+  userId    String   @db.Uuid
+  emoji     String
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId, emoji])
   @@index([userId])
 }

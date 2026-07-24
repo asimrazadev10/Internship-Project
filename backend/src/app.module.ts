@@ -17,6 +17,7 @@ import { AuthModule } from './auth/auth.module';
 import { ChatModule } from './chat/chat.module';
 import { GroupsModule } from './groups/groups.module';
 import { MessagesModule } from './messages/messages.module';
+import { ReactionsModule } from './messages/reactions.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { SummaryModule } from './summary/summary.module';
 import { UsersModule } from './users/users.module';
@@ -46,6 +47,7 @@ import { UsersModule } from './users/users.module';
     AuthModule,
     GroupsModule,
     MessagesModule,
+    ReactionsModule,
     ChatModule,
   ],
   providers: [

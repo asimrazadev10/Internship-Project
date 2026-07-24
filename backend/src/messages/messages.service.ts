@@ -22,6 +22,7 @@ const MESSAGE_SELECT = {
   createdAt: true,
   senderId: true,
   sender: { select: { id: true, name: true } },
+  reactions: { select: { emoji: true, userId: true } },
 } as const;
 
 @Injectable()

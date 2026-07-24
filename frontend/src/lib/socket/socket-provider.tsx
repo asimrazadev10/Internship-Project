@@ -1,11 +1,17 @@
 "use client";
 
-import { useQueryClient } from "@tanstack/react-query";
+import { type InfiniteData, useQueryClient } from "@tanstack/react-query";
 import { createContext, useContext, useEffect, useState } from "react";
 import { io, type Socket } from "socket.io-client";
 
 import { tokenStore } from "@/lib/api/tokens";
-import type { GroupDetail, GroupMemberView, Message } from "@/lib/api/types";
+import type {
+  GroupDetail,
+  GroupMemberView,
+  Message,
+  MessagePage,
+  Reaction,
+} from "@/lib/api/types";
 import { useAuth } from "@/lib/auth/auth-context";
 import { groupKeys } from "@/lib/queries/groups";
 import { messageKeys } from "@/lib/queries/messages";
@@ -68,6 +74,26 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
         // The groups list shows a member COUNT in a different shape; mark it stale so it
         // refetches with the new count when next viewed.
         queryClient.invalidateQueries({ queryKey: groupKeys.all, exact: true });
+      },
+    );
+
+    // A message's reactions changed — patch that message wherever it lives (live buffer or a
+    // loaded history page), so counts update without a refetch.
+    nextSocket.on(
+      "reaction_updated",
+      (p: { groupId: string; messageId: string; reactions: Reaction[] }) => {
+        const patch = (m: Message): Message =>
+          m.id === p.messageId ? { ...m, reactions: p.reactions } : m;
+        queryClient.setQueryData<Message[]>(messageKeys.live(p.groupId), (old = []) =>
+          old.map(patch),
+        );
+        queryClient.setQueryData<InfiniteData<MessagePage>>(
+          messageKeys.history(p.groupId),
+          (old) =>
+            old
+              ? { ...old, pages: old.pages.map((pg) => ({ ...pg, data: pg.data.map(patch) })) }
+              : old,
+        );
       },
     );
 

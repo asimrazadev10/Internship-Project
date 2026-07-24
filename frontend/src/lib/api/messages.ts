@@ -1,5 +1,11 @@
 import { api } from "./client";
-import type { ApiSuccess, Message, MessagePage, PaginationMeta } from "./types";
+import type {
+  ApiSuccess,
+  Message,
+  MessagePage,
+  PaginationMeta,
+  Reaction,
+} from "./types";
 
 /**
  * A page of a group's message history, newest first. `cursor` is the opaque token from a
@@ -27,6 +33,19 @@ export async function sendMessage(
   const { data } = await api.post<ApiSuccess<Message>>(
     `/groups/${groupId}/messages`,
     { content },
+  );
+  return data.data;
+}
+
+/** Toggle the current user's emoji on a message. Returns its new reaction set (also broadcast live). */
+export async function toggleReaction(
+  groupId: string,
+  messageId: string,
+  emoji: string,
+): Promise<Reaction[]> {
+  const { data } = await api.post<ApiSuccess<Reaction[]>>(
+    `/groups/${groupId}/messages/${messageId}/reactions`,
+    { emoji },
   );
   return data.data;
 }
