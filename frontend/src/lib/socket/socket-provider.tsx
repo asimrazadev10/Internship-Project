@@ -97,6 +97,21 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
       },
     );
 
+    // An edited or deleted message — replace it in place wherever it's cached.
+    nextSocket.on("message_updated", (message: Message) => {
+      const replace = (m: Message): Message => (m.id === message.id ? message : m);
+      queryClient.setQueryData<Message[]>(messageKeys.live(message.groupId), (old = []) =>
+        old.map(replace),
+      );
+      queryClient.setQueryData<InfiniteData<MessagePage>>(
+        messageKeys.history(message.groupId),
+        (old) =>
+          old
+            ? { ...old, pages: old.pages.map((pg) => ({ ...pg, data: pg.data.map(replace) })) }
+            : old,
+      );
+    });
+
     // A member marked the group read — update their lastReadAt so "seen" indicators move live.
     nextSocket.on(
       "read_receipt",

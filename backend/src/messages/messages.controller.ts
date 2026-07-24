@@ -1,8 +1,10 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
+  Patch,
   Post,
   Query,
   UseGuards,
@@ -46,5 +48,26 @@ export class MessagesController {
   ) {
     // Returning { data, meta } signals the ResponseInterceptor to lift meta into the envelope.
     return this.messagesService.findPage(groupId, query.limit, query.cursor);
+  }
+
+  @Patch(':messageId')
+  @ResponseMessage('Message updated')
+  edit(
+    @Param('id', ParseUuidPipe) groupId: string,
+    @Param('messageId', ParseUuidPipe) messageId: string,
+    @CurrentUser('userId') userId: string,
+    @Body() dto: CreateMessageDto,
+  ) {
+    return this.messagesService.edit(groupId, messageId, userId, dto.content);
+  }
+
+  @Delete(':messageId')
+  @ResponseMessage('Message deleted')
+  remove(
+    @Param('id', ParseUuidPipe) groupId: string,
+    @Param('messageId', ParseUuidPipe) messageId: string,
+    @CurrentUser('userId') userId: string,
+  ) {
+    return this.messagesService.softDelete(groupId, messageId, userId);
   }
 }

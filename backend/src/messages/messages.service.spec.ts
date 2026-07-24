@@ -51,7 +51,12 @@ describe('MessagesService.findForSummary', () => {
 
     expect(prisma.message.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { groupId: 'g1', type: MessageType.USER, createdAt: { gte: since } },
+        where: {
+          groupId: 'g1',
+          type: MessageType.USER,
+          createdAt: { gte: since },
+          deletedAt: null,
+        },
         orderBy: { createdAt: 'asc' },
       }),
     );

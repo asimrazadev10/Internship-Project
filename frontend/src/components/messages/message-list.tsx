@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Avatar } from "@/components/ui/avatar";
 import { markRead } from "@/lib/api/groups";
-import { toggleReaction } from "@/lib/api/messages";
+import { deleteMessage, editMessage, toggleReaction } from "@/lib/api/messages";
 import { getApiErrorMessage } from "@/lib/api/error";
 import type { GroupMemberView, Message, Reaction } from "@/lib/api/types";
 import { useAuth } from "@/lib/auth/auth-context";
@@ -76,14 +76,21 @@ function MessageRow({
   isOwn,
   currentUserId,
   onReact,
+  onEdit,
+  onDelete,
   seenBy,
 }: {
   message: Message;
   isOwn: boolean;
   currentUserId?: string;
   onReact: (messageId: string, emoji: string) => void;
+  onEdit: (messageId: string, content: string) => void;
+  onDelete: (messageId: string) => void;
   seenBy?: string[] | null;
 }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(message.content);
+
   if (message.type === "AI_SUMMARY") {
     return (
       <li className="mx-auto w-full max-w-[92%] rounded-2xl border border-brand/40 bg-brand-soft/60 p-4 shadow-sm">
@@ -108,6 +115,24 @@ function MessageRow({
 
   const senderName = message.sender?.name ?? "Someone";
 
+  // Soft-deleted tombstone — the row stays so history has no gaps.
+  if (message.deletedAt) {
+    return (
+      <li className={`flex items-end gap-2.5 ${isOwn ? "flex-row-reverse" : ""}`}>
+        {!isOwn && <Avatar name={senderName} id={message.senderId} size={30} />}
+        <div className="max-w-[78%] rounded-2xl border border-dashed border-line px-3.5 py-2 text-sm italic text-muted">
+          This message was deleted
+        </div>
+      </li>
+    );
+  }
+
+  function save() {
+    const trimmed = draft.trim();
+    if (trimmed && trimmed !== message.content) onEdit(message.id, trimmed);
+    setEditing(false);
+  }
+
   return (
     <li className={`group flex items-end gap-2.5 ${isOwn ? "flex-row-reverse" : ""}`}>
       {!isOwn && <Avatar name={senderName} id={message.senderId} size={30} />}
@@ -115,14 +140,72 @@ function MessageRow({
         <div className="flex items-baseline gap-2 px-1 font-mono text-[11px] text-muted">
           {!isOwn && <span className="uppercase tracking-wide">{senderName}</span>}
           <span>{formatTime(message.createdAt)}</span>
+          {message.editedAt && <span>· edited</span>}
+          {isOwn && !editing && (
+            <span className="flex gap-1.5 opacity-0 transition group-hover:opacity-100">
+              <button
+                onClick={() => {
+                  setDraft(message.content);
+                  setEditing(true);
+                }}
+                className="transition hover:text-ink"
+              >
+                edit
+              </button>
+              <button
+                onClick={() => {
+                  if (window.confirm("Delete this message?")) onDelete(message.id);
+                }}
+                className="transition hover:text-brand-strong"
+              >
+                delete
+              </button>
+            </span>
+          )}
         </div>
-        <div
-          className={`whitespace-pre-wrap break-words rounded-2xl px-3.5 py-2 text-sm shadow-sm ${
-            isOwn ? "rounded-br-md bg-brand text-on-brand" : "rounded-bl-md bg-surface text-ink"
-          }`}
-        >
-          {message.content}
-        </div>
+
+        {editing ? (
+          <div className={`flex flex-col gap-1 ${isOwn ? "items-end" : ""}`}>
+            <textarea
+              aria-label="Edit message"
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  save();
+                }
+                if (e.key === "Escape") setEditing(false);
+              }}
+              rows={2}
+              autoFocus
+              className="w-64 resize-none rounded-2xl border border-line bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-brand"
+            />
+            <div className="flex gap-3 text-xs">
+              <button onClick={save} className="font-semibold text-brand-strong">
+                Save
+              </button>
+              <button
+                onClick={() => {
+                  setDraft(message.content);
+                  setEditing(false);
+                }}
+                className="text-muted"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div
+            className={`whitespace-pre-wrap break-words rounded-2xl px-3.5 py-2 text-sm shadow-sm ${
+              isOwn ? "rounded-br-md bg-brand text-on-brand" : "rounded-bl-md bg-surface text-ink"
+            }`}
+          >
+            {message.content}
+          </div>
+        )}
+
         <ReactionBar
           reactions={message.reactions}
           currentUserId={currentUserId}
@@ -152,17 +235,17 @@ export function MessageList({
 
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  // Toggle a reaction; the UI updates when the reaction_updated broadcast lands (sender included).
-  function react(messageId: string, emoji: string) {
+  // Mutations — the UI updates when the broadcast (reaction_updated / message_updated) lands.
+  const react = (messageId: string, emoji: string) =>
     void toggleReaction(groupId, messageId, emoji).catch(() => {});
-  }
+  const edit = (messageId: string, content: string) =>
+    void editMessage(groupId, messageId, content).catch(() => {});
+  const remove = (messageId: string) =>
+    void deleteMessage(groupId, messageId).catch(() => {});
 
-  // Scroll to the bottom when the NEWEST message changes — keyed on the last id, so loading OLDER
-  // history doesn't yank the view.
   const newestId = messages[messages.length - 1]?.id;
   useEffect(() => {
     bottomRef.current?.scrollIntoView();
-    // Mark the group read once the newest message is on screen (tab focused).
     if (
       newestId &&
       typeof document !== "undefined" &&
@@ -227,6 +310,8 @@ export function MessageList({
                 isOwn={message.senderId === user?.id}
                 currentUserId={user?.id}
                 onReact={react}
+                onEdit={edit}
+                onDelete={remove}
                 seenBy={message.id === lastOwn?.id ? seenNames : null}
               />
             ))}

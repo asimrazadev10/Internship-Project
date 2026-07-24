@@ -1,11 +1,20 @@
-import { Injectable } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { MessageType } from '@prisma/client';
 
 import { PaginationMeta } from '../common/http/api-response';
 import { decodeCursor, encodeCursor } from '../common/utils/cursor';
 import { PrismaService } from '../prisma/prisma.service';
-import { MESSAGE_CREATED, MessageCreatedPayload } from './message-events';
+import {
+  MESSAGE_CREATED,
+  MESSAGE_UPDATED,
+  MessageCreatedPayload,
+  MessageUpdatedPayload,
+} from './message-events';
 
 /**
  * Message reads and writes. Membership authorization is enforced by GroupMemberGuard at the
@@ -20,6 +29,8 @@ const MESSAGE_SELECT = {
   content: true,
   type: true,
   createdAt: true,
+  editedAt: true,
+  deletedAt: true,
   senderId: true,
   sender: { select: { id: true, name: true } },
   reactions: { select: { emoji: true, userId: true } },
@@ -39,6 +50,55 @@ export class MessagesService {
       content,
       type: MessageType.USER,
     });
+  }
+
+  /** Edit your own USER message. Broadcasts message.updated so clients replace it in place. */
+  async edit(
+    groupId: string,
+    messageId: string,
+    userId: string,
+    content: string,
+  ) {
+    const existing = await this.assertOwnUserMessage(groupId, messageId, userId);
+    if (existing.deletedAt) {
+      throw new ForbiddenException('This message has been deleted');
+    }
+    const message = await this.prisma.message.update({
+      where: { id: messageId },
+      data: { content, editedAt: new Date() },
+      select: MESSAGE_SELECT,
+    });
+    this.events.emit(MESSAGE_UPDATED, { message } satisfies MessageUpdatedPayload);
+    return message;
+  }
+
+  /** Soft-delete your own USER message: tombstone it (blank the text) and broadcast the update. */
+  async softDelete(groupId: string, messageId: string, userId: string) {
+    await this.assertOwnUserMessage(groupId, messageId, userId);
+    const message = await this.prisma.message.update({
+      where: { id: messageId },
+      data: { deletedAt: new Date(), content: '' },
+      select: MESSAGE_SELECT,
+    });
+    this.events.emit(MESSAGE_UPDATED, { message } satisfies MessageUpdatedPayload);
+    return message;
+  }
+
+  /** The message must exist in this group AND be a USER message the caller sent. */
+  private async assertOwnUserMessage(
+    groupId: string,
+    messageId: string,
+    userId: string,
+  ) {
+    const existing = await this.prisma.message.findFirst({
+      where: { id: messageId, groupId },
+      select: { senderId: true, type: true, deletedAt: true },
+    });
+    if (!existing) throw new NotFoundException('Message not found');
+    if (existing.senderId !== userId || existing.type !== MessageType.USER) {
+      throw new ForbiddenException('You can only change your own messages');
+    }
+    return existing;
   }
 
   /**
@@ -73,7 +133,12 @@ export class MessagesService {
   /** The window's USER messages (oldest first) that a summary is built from. */
   findForSummary(groupId: string, since: Date) {
     return this.prisma.message.findMany({
-      where: { groupId, type: MessageType.USER, createdAt: { gte: since } },
+      where: {
+        groupId,
+        type: MessageType.USER,
+        createdAt: { gte: since },
+        deletedAt: null,
+      },
       orderBy: { createdAt: 'asc' },
       select: { content: true, createdAt: true, sender: { select: { name: true } } },
     });

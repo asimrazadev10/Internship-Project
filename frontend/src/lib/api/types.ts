@@ -80,6 +80,8 @@ export interface Message {
   content: string;
   type: MessageType;
   createdAt: string;
+  editedAt: string | null;
+  deletedAt: string | null;
   sender: { id: string; name: string } | null;
   reactions: Reaction[];
 }

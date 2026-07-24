@@ -18,8 +18,11 @@ import { JwtPayload } from '../auth/interfaces/auth.types';
 import { MEMBER_JOINED, READ_MARKED } from '../groups/group-events';
 import type { MemberJoinedPayload, ReadMarkedPayload } from '../groups/group-events';
 import { GroupsService } from '../groups/groups.service';
-import { MESSAGE_CREATED } from '../messages/message-events';
-import type { MessageCreatedPayload } from '../messages/message-events';
+import { MESSAGE_CREATED, MESSAGE_UPDATED } from '../messages/message-events';
+import type {
+  MessageCreatedPayload,
+  MessageUpdatedPayload,
+} from '../messages/message-events';
 import { REACTION_CHANGED } from '../messages/reaction-events';
 import type { ReactionChangedPayload } from '../messages/reaction-events';
 import { MessagesService } from '../messages/messages.service';
@@ -244,6 +247,14 @@ export class ChatGateway
     this.server
       .to(roomFor(payload.message.groupId))
       .emit('new_message', payload.message);
+  }
+
+  /** An edited or deleted message — push the new version so clients replace it in place. */
+  @OnEvent(MESSAGE_UPDATED)
+  broadcastMessageUpdated(payload: MessageUpdatedPayload): void {
+    this.server
+      .to(roomFor(payload.message.groupId))
+      .emit('message_updated', payload.message);
   }
 
   /**

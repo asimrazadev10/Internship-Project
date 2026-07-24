@@ -107,6 +107,10 @@ model Message {
   content   String      @db.Text
   type      MessageType @default(USER)
   createdAt DateTime    @default(now()) @db.Timestamptz(3)
+  // Bonus: edit & (soft) delete. editedAt marks an edited message; deletedAt tombstones it
+  // (the row stays so history renders a "deleted" placeholder rather than a gap).
+  editedAt  DateTime?   @db.Timestamptz(3)
+  deletedAt DateTime?   @db.Timestamptz(3)
 
   group     Group      @relation(fields: [groupId], references: [id], onDelete: Cascade)
   // SetNull, not Cascade: deleting a user must not erase the conversation for everyone else.
