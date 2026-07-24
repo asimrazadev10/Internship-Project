@@ -125,6 +125,30 @@ export class EnvironmentVariables {
   @IsInt({ message: 'SUMMARY_WINDOW_MS must be an integer' })
   @Min(1000)
   SUMMARY_WINDOW_MS = 86_400_000;
+
+  // Phase 5 — per-worker BullMQ concurrency. Each standalone worker process reads its own knob.
+  // Read two ways: the @Processor decorator reads process.env directly (it evaluates before
+  // ConfigModule loads .env), and this validation guarantees the same keys are well-formed
+  // integers for anything reading them through ConfigService.
+  @Type(() => Number)
+  @IsInt({ message: 'SCHEDULER_WORKER_CONCURRENCY must be an integer' })
+  @Min(1)
+  SCHEDULER_WORKER_CONCURRENCY = 1;
+
+  @Type(() => Number)
+  @IsInt({ message: 'AI_WORKER_CONCURRENCY must be an integer' })
+  @Min(1)
+  AI_WORKER_CONCURRENCY = 2;
+
+  @Type(() => Number)
+  @IsInt({ message: 'SUMMARY_WORKER_CONCURRENCY must be an integer' })
+  @Min(1)
+  SUMMARY_WORKER_CONCURRENCY = 5;
+
+  @Type(() => Number)
+  @IsInt({ message: 'NOTIFICATION_WORKER_CONCURRENCY must be an integer' })
+  @Min(1)
+  NOTIFICATION_WORKER_CONCURRENCY = 10;
 }
 
 export function validateEnv(
