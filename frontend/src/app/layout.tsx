@@ -22,6 +22,11 @@ const spaceMono = Space_Mono({
 });
 
 export const metadata: Metadata = {
+  // metadataBase turns the generated opengraph-image into an absolute URL, which crawlers require.
+  // Falls back to localhost in dev; set NEXT_PUBLIC_SITE_URL when deploying.
+  metadataBase: new URL(
+    process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3001",
+  ),
   title: "Convo",
   description: "Real-time group chat.",
 };
