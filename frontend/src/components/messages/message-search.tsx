@@ -3,6 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 
+import { NoMatchesMark } from "@/components/ui/illustrations";
 import { searchMessages } from "@/lib/api/messages";
 
 function useDebounced<T>(value: T, ms: number): T {
@@ -50,9 +51,10 @@ export function MessageSearch({ groupId }: { groupId: string }) {
           {isFetching && results.length === 0 ? (
             <p className="px-3 py-2 text-sm text-muted">Searching…</p>
           ) : results.length === 0 ? (
-            <p className="px-3 py-2 text-sm text-muted">
-              No matches for “{debounced}”.
-            </p>
+            <div className="flex items-center gap-2.5 px-3 py-2">
+              <NoMatchesMark />
+              <p className="text-sm text-muted">No matches for “{debounced}”.</p>
+            </div>
           ) : (
             <ul className="flex flex-col">
               {results.map((m) => (

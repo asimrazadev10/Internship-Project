@@ -3,6 +3,8 @@
 import Link from "next/link";
 
 import { Avatar } from "@/components/ui/avatar";
+import { EmptyState } from "@/components/ui/empty-state";
+import { EmptyGroups } from "@/components/ui/illustrations";
 import { getApiErrorMessage } from "@/lib/api/error";
 import { useGroups } from "@/lib/queries/groups";
 
@@ -24,9 +26,11 @@ export function GroupList() {
 
   if (!groups || groups.length === 0) {
     return (
-      <div className="rounded-2xl border border-dashed border-line-strong bg-surface/50 p-10 text-center text-sm text-muted">
-        No groups yet. Create one above, or paste an invite id to join.
-      </div>
+      <EmptyState
+        illustration={<EmptyGroups />}
+        title="No groups yet"
+        hint="Create one above, or paste an invite id to join."
+      />
     );
   }
 

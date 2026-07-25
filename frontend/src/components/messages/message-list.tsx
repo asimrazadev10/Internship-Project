@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 
 import { Avatar } from "@/components/ui/avatar";
+import { EmptyState } from "@/components/ui/empty-state";
+import { EmptyMessages } from "@/components/ui/illustrations";
 import { markRead } from "@/lib/api/groups";
 import { deleteMessage, editMessage, toggleReaction } from "@/lib/api/messages";
 import { getApiErrorMessage } from "@/lib/api/error";
@@ -27,7 +29,8 @@ function aggregate(reactions: Reaction[], userId?: string) {
   return [...map.values()];
 }
 
-function ReactionBar({
+/** Aggregated reaction chips shown under a bubble. Clicking a chip toggles your own reaction. */
+function ReactionChips({
   reactions,
   currentUserId,
   isOwn,
@@ -39,13 +42,15 @@ function ReactionBar({
   onReact: (emoji: string) => void;
 }) {
   const agg = aggregate(reactions, currentUserId);
+  if (agg.length === 0) return null;
   return (
     <div className={`mt-1 flex flex-wrap items-center gap-1 ${isOwn ? "justify-end" : ""}`}>
       {agg.map((r) => (
         <button
           key={r.emoji}
           onClick={() => onReact(r.emoji)}
-          className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-xs transition ${
+          title="Toggle your reaction"
+          className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition ${
             r.mine
               ? "border-brand bg-brand-soft text-brand-strong"
               : "border-line bg-surface text-muted hover:border-line-strong"
@@ -55,21 +60,10 @@ function ReactionBar({
           <span className="tabular-nums">{r.count}</span>
         </button>
       ))}
-      <div className="flex items-center gap-0.5 rounded-full border border-line bg-surface px-1 py-0.5 opacity-0 transition group-hover:opacity-100 focus-within:opacity-100">
-        {QUICK_EMOJIS.map((e) => (
-          <button
-            key={e}
-            onClick={() => onReact(e)}
-            title={`React ${e}`}
-            className="rounded-full px-1 text-xs transition hover:bg-surface-2"
-          >
-            {e}
-          </button>
-        ))}
-      </div>
     </div>
   );
 }
+
 
 function Attachment({
   url,
@@ -124,6 +118,8 @@ function MessageRow({
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(message.content);
+  const [showPalette, setShowPalette] = useState(false);
+  const [confirming, setConfirming] = useState(false);
 
   if (message.type === "AI_SUMMARY") {
     return (
@@ -168,34 +164,19 @@ function MessageRow({
   }
 
   return (
-    <li className={`group flex items-end gap-2.5 ${isOwn ? "flex-row-reverse" : ""}`}>
+    <li
+      className={`group flex items-end gap-2.5 ${isOwn ? "flex-row-reverse" : ""}`}
+      onMouseLeave={() => {
+        setShowPalette(false);
+        setConfirming(false);
+      }}
+    >
       {!isOwn && <Avatar name={senderName} id={message.senderId} size={30} />}
       <div className={`flex max-w-[78%] flex-col gap-0.5 ${isOwn ? "items-end" : "items-start"}`}>
         <div className="flex items-baseline gap-2 px-1 font-mono text-[11px] text-muted">
           {!isOwn && <span className="uppercase tracking-wide">{senderName}</span>}
           <span>{formatTime(message.createdAt)}</span>
           {message.editedAt && <span>· edited</span>}
-          {isOwn && !editing && (
-            <span className="flex gap-1.5 opacity-0 transition group-hover:opacity-100">
-              <button
-                onClick={() => {
-                  setDraft(message.content);
-                  setEditing(true);
-                }}
-                className="transition hover:text-ink"
-              >
-                edit
-              </button>
-              <button
-                onClick={() => {
-                  if (window.confirm("Delete this message?")) onDelete(message.id);
-                }}
-                className="transition hover:text-brand-strong"
-              >
-                delete
-              </button>
-            </span>
-          )}
         </div>
 
         {editing ? (
@@ -231,25 +212,119 @@ function MessageRow({
             </div>
           </div>
         ) : (
-          <div
-            className={`flex flex-col gap-2 rounded-2xl px-3.5 py-2 text-sm shadow-sm ${
-              isOwn ? "rounded-br-md bg-brand text-on-brand" : "rounded-bl-md bg-surface text-ink"
-            }`}
-          >
-            {message.attachmentUrl && (
-              <Attachment
-                url={message.attachmentUrl}
-                name={message.attachmentName}
-                mime={message.attachmentMime}
-              />
+          <div className="relative">
+            <div
+              className={`flex flex-col gap-2 rounded-2xl px-3.5 py-2 text-sm shadow-sm ${
+                isOwn ? "rounded-br-md bg-brand text-on-brand" : "rounded-bl-md bg-surface text-ink"
+              }`}
+            >
+              {message.attachmentUrl && (
+                <Attachment
+                  url={message.attachmentUrl}
+                  name={message.attachmentName}
+                  mime={message.attachmentMime}
+                />
+              )}
+              {message.content && (
+                <p className="whitespace-pre-wrap break-words">{message.content}</p>
+              )}
+            </div>
+
+            {/* Hover action bar — floats on the OUTER side of the bubble, clear of text and meta. */}
+            <div
+              className={`absolute top-1/2 flex -translate-y-1/2 items-center gap-0.5 rounded-full border border-line bg-surface p-1 opacity-0 shadow-md transition group-hover:opacity-100 focus-within:opacity-100 ${
+                isOwn ? "right-full mr-2" : "left-full ml-2"
+              }`}
+            >
+              <button
+                onClick={() => {
+                  setShowPalette((v) => !v);
+                  setConfirming(false);
+                }}
+                title="Add reaction"
+                aria-label="Add reaction"
+                className="rounded-full px-1.5 py-1 text-sm leading-none transition hover:bg-surface-2"
+              >
+                😊
+              </button>
+              {isOwn && (
+                <>
+                  <button
+                    onClick={() => {
+                      setDraft(message.content);
+                      setEditing(true);
+                      setShowPalette(false);
+                    }}
+                    title="Edit"
+                    aria-label="Edit message"
+                    className="rounded-full px-1.5 py-1 text-sm leading-none transition hover:bg-surface-2"
+                  >
+                    ✏️
+                  </button>
+                  <button
+                    onClick={() => {
+                      setConfirming(true);
+                      setShowPalette(false);
+                    }}
+                    title="Delete"
+                    aria-label="Delete message"
+                    className="rounded-full px-1.5 py-1 text-sm leading-none transition hover:bg-surface-2"
+                  >
+                    🗑️
+                  </button>
+                </>
+              )}
+            </div>
+
+            {/* Emoji palette — opened by the react button, closes on pick or mouse-leave. */}
+            {showPalette && (
+              <div
+                className={`absolute bottom-full z-20 mb-1 flex items-center gap-0.5 rounded-full border border-line bg-surface px-1.5 py-1 shadow-lg ${
+                  isOwn ? "right-0" : "left-0"
+                }`}
+              >
+                {QUICK_EMOJIS.map((e) => (
+                  <button
+                    key={e}
+                    onClick={() => {
+                      onReact(message.id, e);
+                      setShowPalette(false);
+                    }}
+                    title={`React ${e}`}
+                    className="rounded-full px-1.5 py-0.5 text-base leading-none transition hover:bg-surface-2"
+                  >
+                    {e}
+                  </button>
+                ))}
+              </div>
             )}
-            {message.content && (
-              <p className="whitespace-pre-wrap break-words">{message.content}</p>
+
+            {/* Inline delete confirm — no blocking native dialog. */}
+            {confirming && (
+              <div
+                className={`absolute bottom-full z-20 mb-1 flex items-center gap-3 whitespace-nowrap rounded-xl border border-line bg-surface px-3 py-2 text-xs shadow-lg ${
+                  isOwn ? "right-0" : "left-0"
+                }`}
+              >
+                <span className="text-muted">Delete this message?</span>
+                <button
+                  onClick={() => {
+                    onDelete(message.id);
+                    setConfirming(false);
+                  }}
+                  className="font-semibold text-brand-strong"
+                >
+                  Delete
+                </button>
+                <button onClick={() => setConfirming(false)} className="text-muted">
+                  Cancel
+                </button>
+              </div>
             )}
           </div>
         )}
 
-        <ReactionBar
+        <ReactionChips
           reactions={message.reactions}
           currentUserId={currentUserId}
           isOwn={isOwn}
@@ -343,7 +418,11 @@ export function MessageList({
         )}
 
         {messages.length === 0 ? (
-          <p className="py-10 text-center text-sm text-muted">No messages yet. Say hello.</p>
+          <EmptyState
+            illustration={<EmptyMessages />}
+            title="No messages yet"
+            hint="Say hello."
+          />
         ) : (
           <ul className="flex flex-col gap-3.5">
             {messages.map((message) => (
