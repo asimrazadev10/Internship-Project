@@ -31,11 +31,16 @@ export function AuthHero() {
       />
 
       {/* ribbon field — the same primitive as the empty states, at hero scale */}
+      {/*
+        `slice` (scale-to-cover, crop the overflow) rather than `none`: stretching the 200x140
+        viewBox to the panel would scale x and y by different factors, which distorts the stroke
+        widths and smears the bands. Cropping keeps them crisp.
+      */}
       <svg
         aria-hidden
         viewBox="0 0 200 140"
-        preserveAspectRatio="none"
-        className="pointer-events-none absolute inset-0 h-full w-full opacity-60"
+        preserveAspectRatio="xMidYMid slice"
+        className="pointer-events-none absolute inset-0 h-full w-full opacity-45"
       >
         <AuroraRibbons id="hero" bands={6} />
       </svg>
