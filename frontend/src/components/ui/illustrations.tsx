@@ -9,7 +9,13 @@ import { AuroraRibbons } from "@/components/ui/aurora-ribbons";
  * constraint, not an afterthought.
  */
 
-/** Bubble geometry shared by the two full scenes — a rounded rect with a tail. */
+/**
+ * Bubble geometry shared by the two full scenes — a rounded rect with a tail.
+ *
+ * The tail is drawn as one path continuous with the body and the body is filled *and* stroked, so
+ * the seam between them stays invisible. A card-coloured bubble on a card-coloured surface needs
+ * the stroke to carry the whole shape — hence strokeWidth 1.6 rather than the default hairline.
+ */
 function Bubble({
   x,
   y,
@@ -33,22 +39,33 @@ function Bubble({
         rx={h / 2.4}
         fill="var(--card)"
         stroke="var(--border-strong)"
+        strokeWidth="1.6"
       />
       <path
-        d={`M ${x + 12} ${y + h} l 0 7 l 9 -7 z`}
+        d={`M ${x + 14} ${y + h - 2} l 0 9 l 11 -8 z`}
         fill="var(--card)"
         stroke="var(--border-strong)"
+        strokeWidth="1.6"
+        strokeLinejoin="round"
+      />
+      <rect
+        x={x + 1}
+        y={y + h - 4}
+        width={w - 2}
+        height={3}
+        fill="var(--card)"
+        stroke="none"
       />
     </g>
   );
 }
 
-/** No groups yet — a single bubble lifting out of the ribbon field. */
+/** No groups yet — a single bubble lifting clear of the ribbon field. */
 export function EmptyGroups() {
   return (
     <svg viewBox="0 0 200 140" className="h-32 w-auto" aria-hidden>
       <AuroraRibbons id="groups" bands={5} />
-      <Bubble x={62} y={34} w={78} h={34} opacity={1} />
+      <Bubble x={58} y={26} w={84} h={36} opacity={1} />
     </svg>
   );
 }
@@ -58,8 +75,8 @@ export function EmptyMessages() {
   return (
     <svg viewBox="0 0 200 140" className="h-32 w-auto" aria-hidden>
       <AuroraRibbons id="messages" bands={4} />
-      <Bubble x={40} y={26} w={70} h={30} opacity={1} />
-      <Bubble x={96} y={68} w={62} h={28} opacity={0.45} />
+      <Bubble x={26} y={18} w={78} h={32} opacity={1} />
+      <Bubble x={104} y={56} w={68} h={28} opacity={0.5} />
     </svg>
   );
 }

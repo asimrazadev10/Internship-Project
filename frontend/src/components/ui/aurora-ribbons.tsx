@@ -42,23 +42,28 @@ export function AuroraRibbons({
 
       <ellipse
         cx="100"
-        cy="78"
-        rx="70"
-        ry="26"
+        cy="104"
+        rx="72"
+        ry="22"
         fill={`url(#${gradientId})`}
-        opacity="0.28"
+        opacity="0.26"
         filter={`url(#${glowId})`}
       />
 
+      {/*
+        A flat wave held to the lower band (y ~72-140). Deliberately not a dramatic diagonal: the
+        upper half has to stay clear so the bubbles the scenes place there read against the surface
+        instead of competing with strokes.
+      */}
       {Array.from({ length: bands }, (_, i) => {
-        const dy = i * 9;
+        const dy = i * 8;
         return (
           <path
             key={i}
-            d={`M -10 ${88 + dy} C 40 ${48 + dy}, 75 ${113 + dy}, 115 ${68 + dy} S 175 ${23 + dy}, 210 ${48 + dy}`}
+            d={`M -10 ${100 + dy} C 45 ${80 + dy}, 75 ${120 + dy}, 115 ${98 + dy} S 175 ${72 + dy}, 210 ${86 + dy}`}
             fill="none"
             stroke={`url(#${gradientId})`}
-            strokeWidth={3 - i * 0.45}
+            strokeWidth={2.8 - i * 0.4}
             strokeLinecap="round"
             opacity={0.9 - i * 0.15}
           />
