@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/banner.svg" alt="Convo — real-time group chat" width="100%">
+</p>
+
 # Group Chat Application
 
 A group chat backend built with **NestJS**, **PostgreSQL** and **Prisma**. The project is
