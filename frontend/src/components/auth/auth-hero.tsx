@@ -1,3 +1,4 @@
+import { AuroraRibbons } from "@/components/ui/aurora-ribbons";
 import { Avatar } from "@/components/ui/avatar";
 import { Logo } from "@/components/ui/logo";
 
@@ -29,7 +30,20 @@ export function AuthHero() {
         className="pointer-events-none absolute -right-24 -top-24 h-80 w-80 rounded-full bg-brand/20 blur-3xl"
       />
 
-      <Logo size="lg" />
+      {/* ribbon field — the same primitive as the empty states, at hero scale */}
+      <svg
+        aria-hidden
+        viewBox="0 0 200 140"
+        preserveAspectRatio="none"
+        className="pointer-events-none absolute inset-0 h-full w-full opacity-60"
+      >
+        <AuroraRibbons id="hero" bands={6} />
+      </svg>
+
+      {/* `relative` so the mark paints above the absolutely-positioned ribbon layer above it */}
+      <div className="relative">
+        <Logo size="lg" />
+      </div>
 
       <div className="relative flex flex-col gap-7">
         <h1 className="max-w-md font-display text-4xl font-extrabold leading-[1.1] tracking-tight text-ink">
