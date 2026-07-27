@@ -1,0 +1,23 @@
+import { Prisma } from '@prisma/client';
+
+/**
+ * The member shape returned by group reads.
+ *
+ * This was written out twice — once in GroupsService.findOne's nested members select, and again in
+ * join's create select — and the two MUST match, because the frontend appends the `member_joined`
+ * socket payload straight into the cached group detail from findOne. If join returned a member
+ * missing a field that findOne includes, the cache would hold two different shapes for the same
+ * thing and the UI would read undefined off one of them.
+ *
+ * Only the join path was pinned to a type (`satisfies MemberJoinedPayload`); findOne's select was
+ * pinned to nothing, so adding a field there alone compiled cleanly and shipped the mismatch.
+ *
+ * Note the explicit `user` field list: never `include: { user: true }`, which would pull the
+ * password hash into the result.
+ */
+export const GROUP_MEMBER_SELECT = {
+  role: true,
+  joinedAt: true,
+  lastReadAt: true,
+  user: { select: { id: true, name: true, email: true } },
+} satisfies Prisma.GroupMemberSelect;

@@ -15,6 +15,7 @@ import {
 import { Server } from 'socket.io';
 
 import { JwtPayload } from '../auth/interfaces/auth.types';
+import { NOT_A_MEMBER_MESSAGE } from '../common/error-messages';
 import { MEMBER_JOINED, READ_MARKED } from '../groups/group-events';
 import type {
   MemberJoinedPayload,
@@ -136,7 +137,7 @@ export class ChatGateway
       return { ok: true };
     } catch (err) {
       if (err instanceof ForbiddenException) {
-        return { ok: false, error: 'You are not a member of this group' };
+        return { ok: false, error: NOT_A_MEMBER_MESSAGE };
       }
       this.logger.error(
         'joinGroup failed',
@@ -237,10 +238,7 @@ export class ChatGateway
       await this.groups.assertMember(userId, groupId);
     } catch (err) {
       if (err instanceof ForbiddenException) {
-        return {
-          ok: false as const,
-          error: 'You are not a member of this group',
-        };
+        return { ok: false as const, error: NOT_A_MEMBER_MESSAGE };
       }
       this.logger.error(
         'sendMessage failed',

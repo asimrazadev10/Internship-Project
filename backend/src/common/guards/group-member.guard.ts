@@ -9,6 +9,7 @@ import { GroupMember } from '@prisma/client';
 import { Request } from 'express';
 
 import { AuthUser } from '../decorators/current-user.decorator';
+import { NOT_A_MEMBER_MESSAGE } from '../error-messages';
 import { PrismaService } from '../../prisma/prisma.service';
 import { isUuid } from '../utils/uuid';
 
@@ -44,7 +45,7 @@ export class GroupMemberGuard implements CanActivate {
 
     const groupId = request.params.id;
     if (!isUuid(groupId)) {
-      throw new ForbiddenException('You are not a member of this group');
+      throw new ForbiddenException(NOT_A_MEMBER_MESSAGE);
     }
 
     const membership = await this.prisma.groupMember.findUnique({
@@ -52,7 +53,7 @@ export class GroupMemberGuard implements CanActivate {
     });
 
     if (!membership) {
-      throw new ForbiddenException('You are not a member of this group');
+      throw new ForbiddenException(NOT_A_MEMBER_MESSAGE);
     }
 
     // Surface the loaded membership so handlers needing the caller's role don't re-query.

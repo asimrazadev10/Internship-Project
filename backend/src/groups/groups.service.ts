@@ -7,8 +7,10 @@ import {
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Group, MemberRole, Prisma } from '@prisma/client';
 
+import { NOT_A_MEMBER_MESSAGE } from '../common/error-messages';
 import { PrismaService } from '../prisma/prisma.service';
 import { isUuid } from '../common/utils/uuid';
+import { GROUP_MEMBER_SELECT } from './group.constants';
 import {
   MEMBER_JOINED,
   MemberJoinedPayload,
@@ -74,14 +76,7 @@ export class GroupsService {
       include: {
         members: {
           orderBy: { joinedAt: 'asc' },
-          select: {
-            role: true,
-            joinedAt: true,
-            lastReadAt: true,
-            // Explicit field selection: never `include: { user: true }`, which would pull the
-            // password hash into the query result.
-            user: { select: { id: true, name: true, email: true } },
-          },
+          select: GROUP_MEMBER_SELECT,
         },
       },
     });
@@ -110,12 +105,7 @@ export class GroupsService {
       // event payload can be appended straight into the frontend's cached group detail.
       const member = await this.prisma.groupMember.create({
         data: { groupId, userId, role: MemberRole.MEMBER },
-        select: {
-          role: true,
-          joinedAt: true,
-          lastReadAt: true,
-          user: { select: { id: true, name: true, email: true } },
-        },
+        select: GROUP_MEMBER_SELECT,
       });
 
       // Persist-then-broadcast, same pattern as messages: the row exists before anyone is told.
@@ -147,13 +137,13 @@ export class GroupsService {
    */
   async assertMember(userId: string, groupId: string): Promise<void> {
     if (!isUuid(groupId)) {
-      throw new ForbiddenException('You are not a member of this group');
+      throw new ForbiddenException(NOT_A_MEMBER_MESSAGE);
     }
     const membership = await this.prisma.groupMember.findUnique({
       where: { groupId_userId: { groupId, userId } },
     });
     if (!membership) {
-      throw new ForbiddenException('You are not a member of this group');
+      throw new ForbiddenException(NOT_A_MEMBER_MESSAGE);
     }
   }
 
