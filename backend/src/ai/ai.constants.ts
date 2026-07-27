@@ -49,7 +49,12 @@ export const summaryUserPrompt = (transcript: string): string =>
  * limiter is coordinated through Redis and therefore caps the rate across every instance — it is
  * what actually protects the free AI Studio tier.
  *
- * 10/minute is a free-tier figure. A paid key wants a different one; see the note in the README
- * about promoting this to env when that happens.
+ * These are the (env key, default) pairs, not the values: 10/minute is a free AI-Studio-tier
+ * figure, and a paid key wants a different one — which should be a deploy-time change, not a code
+ * change and a redeploy. The decorator resolves them through intFromEnv for the same reason
+ * concurrency does: @Processor options evaluate before ConfigService exists.
  */
-export const AI_RATE_LIMIT = { max: 10, durationMs: 60_000 } as const;
+export const AI_RATE_LIMIT = {
+  max: { key: 'AI_RATE_LIMIT_MAX', default: 10 },
+  duration: { key: 'AI_RATE_LIMIT_DURATION_MS', default: 60_000 },
+} as const;

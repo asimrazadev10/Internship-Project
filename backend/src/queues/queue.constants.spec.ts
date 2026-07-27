@@ -8,7 +8,7 @@ import {
   JOB_SAVE,
   JOB_PUBLISH,
   JOB_FETCH,
-  concurrencyFromEnv,
+  intFromEnv,
   firstChildValue,
 } from './queue.constants';
 
@@ -60,24 +60,24 @@ describe('buildSummaryFlow', () => {
   });
 });
 
-describe('concurrencyFromEnv', () => {
+describe('intFromEnv', () => {
   afterEach(() => delete process.env.TEST_CONC);
   it('parses a positive integer from the env', () => {
     process.env.TEST_CONC = '7';
-    expect(concurrencyFromEnv('TEST_CONC', 2)).toBe(7);
+    expect(intFromEnv('TEST_CONC', 2)).toBe(7);
   });
   it('falls back when unset or invalid', () => {
-    expect(concurrencyFromEnv('TEST_CONC', 2)).toBe(2);
+    expect(intFromEnv('TEST_CONC', 2)).toBe(2);
     process.env.TEST_CONC = 'abc';
-    expect(concurrencyFromEnv('TEST_CONC', 2)).toBe(2);
+    expect(intFromEnv('TEST_CONC', 2)).toBe(2);
   });
   it('falls back for zero, negative, and non-integer values', () => {
     process.env.TEST_CONC = '0';
-    expect(concurrencyFromEnv('TEST_CONC', 2)).toBe(2);
+    expect(intFromEnv('TEST_CONC', 2)).toBe(2);
     process.env.TEST_CONC = '-3';
-    expect(concurrencyFromEnv('TEST_CONC', 2)).toBe(2);
+    expect(intFromEnv('TEST_CONC', 2)).toBe(2);
     process.env.TEST_CONC = '3.5';
-    expect(concurrencyFromEnv('TEST_CONC', 2)).toBe(2);
+    expect(intFromEnv('TEST_CONC', 2)).toBe(2);
   });
 });
 

@@ -8,6 +8,7 @@ import {
   AI_QUEUE,
   concurrencyFor,
   firstChildValue,
+  intFromEnv,
 } from '../../queues/queue.constants';
 import type { FetchResult, GenerateResult } from './stage.types';
 
@@ -23,7 +24,13 @@ import type { FetchResult, GenerateResult } from './stage.types';
  */
 @Processor(AI_QUEUE, {
   concurrency: concurrencyFor('AI'),
-  limiter: { max: AI_RATE_LIMIT.max, duration: AI_RATE_LIMIT.durationMs },
+  limiter: {
+    max: intFromEnv(AI_RATE_LIMIT.max.key, AI_RATE_LIMIT.max.default),
+    duration: intFromEnv(
+      AI_RATE_LIMIT.duration.key,
+      AI_RATE_LIMIT.duration.default,
+    ),
+  },
 })
 export class GenerateProcessor extends WorkerHost {
   private readonly logger = new Logger(GenerateProcessor.name);

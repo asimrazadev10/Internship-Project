@@ -118,12 +118,15 @@ export const buildSummaryFlow = (
 });
 
 /**
- * The @Processor concurrency option is evaluated at import time and cannot inject ConfigService
- * (same static-decorator constraint as the Phase 3 socket CORS and the Phase 4 rate limiter). Each
- * standalone worker entry point loads dotenv BEFORE importing its module, so process.env is already
- * populated by the time this runs inside the decorator.
+ * @Processor options are evaluated at import time and cannot inject ConfigService (the same
+ * static-decorator constraint as the Phase 3 socket CORS). Each standalone worker entry point
+ * loads dotenv BEFORE importing its module, so process.env is already populated by the time this
+ * runs inside the decorator.
+ *
+ * Named `intFromEnv` rather than `concurrencyFromEnv` because the AI rate limiter needs the same
+ * escape hatch — the body was always generic.
  */
-export const concurrencyFromEnv = (key: string, fallback: number): number => {
+export const intFromEnv = (key: string, fallback: number): number => {
   const raw = process.env[key];
   const n = raw !== undefined ? Number(raw) : NaN;
   return Number.isInteger(n) && n > 0 ? n : fallback;
@@ -155,7 +158,7 @@ export const concurrencyFor = (
   worker: keyof typeof WORKER_CONCURRENCY,
 ): number => {
   const { key, default: fallback } = WORKER_CONCURRENCY[worker];
-  return concurrencyFromEnv(key, fallback);
+  return intFromEnv(key, fallback);
 };
 
 /** A flow stage has exactly one child; return its BullMQ return value (or undefined). */

@@ -11,6 +11,7 @@ import {
   validateSync,
 } from 'class-validator';
 
+import { AI_RATE_LIMIT } from '../ai/ai.constants';
 import { WORKER_CONCURRENCY } from '../queues/queue.constants';
 
 /**
@@ -128,6 +129,20 @@ export class EnvironmentVariables {
   @IsString()
   @IsNotEmpty()
   GEMINI_MODEL: string = 'gemini-2.0-flash';
+
+  // Global Gemini call rate, enforced by the ai-queue's Redis-coordinated BullMQ limiter. Defaults
+  // are free AI-Studio-tier figures; a paid key should raise them without a code change. Read via
+  // process.env inside the @Processor decorator (which evaluates before ConfigService exists), so
+  // this validation is what guarantees the values are well-formed.
+  @Type(() => Number)
+  @IsInt({ message: 'AI_RATE_LIMIT_MAX must be an integer' })
+  @Min(1)
+  AI_RATE_LIMIT_MAX: number = AI_RATE_LIMIT.max.default;
+
+  @Type(() => Number)
+  @IsInt({ message: 'AI_RATE_LIMIT_DURATION_MS must be an integer' })
+  @Min(1000)
+  AI_RATE_LIMIT_DURATION_MS: number = AI_RATE_LIMIT.duration.default;
 
   // Scheduler tick + how far back each summary looks. Default 24h; set small (e.g. 60000) to demo.
   @Type(() => Number)
