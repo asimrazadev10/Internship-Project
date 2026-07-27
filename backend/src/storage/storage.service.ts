@@ -17,6 +17,34 @@ export interface UploadedFileLike {
   buffer: Buffer;
 }
 
+/**
+ * The stored file extension for each allowed MIME type.
+ *
+ * The stored name's extension is DERIVED from the validated MIME, never carried over from the
+ * uploader's filename, because the two are checked and used at different moments by different
+ * code: ParseFilePipe validates the MIME at upload time, but Express's serve-static picks the
+ * response Content-Type from the EXTENSION at serve time. Preserving a user-supplied extension
+ * lets those two disagree — a genuine PNG named `evil.html` passes byte-level validation and is
+ * then served as text/html from the app's own origin, which is stored XSS with the access token
+ * in localStorage one script tag away.
+ *
+ * Keyed off messages/upload.constants.ts so the allow-list has one definition. That import
+ * direction (storage <- messages) is safe: upload.constants.ts imports nothing, so there is no
+ * cycle. `image/jpg` is present because the validator's RegExp deliberately accepts that
+ * non-standard spelling.
+ */
+const EXTENSION_FOR_MIME: Record<string, string> = {
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/jpg': 'jpg',
+  'image/gif': 'gif',
+  'image/webp': 'webp',
+  'application/pdf': 'pdf',
+};
+
+/** Anything not on the allow-list is stored inert, so serve-static sends octet-stream. */
+const FALLBACK_EXTENSION = 'bin';
+
 /** What an upload yields: a public URL plus the metadata persisted on the message row. */
 export interface StoredFile {
   url: string;
@@ -64,10 +92,18 @@ export class StorageService {
    * guarantees uniqueness even for repeated identical filenames.
    */
   async upload(groupId: string, file: UploadedFileLike): Promise<StoredFile> {
-    // Keep only filename-safe characters and cap length so a hostile name can't build a path.
-    const safeName =
-      file.originalname.replace(/[^\w.-]+/g, '_').slice(-80) || 'file';
-    const objectPath = `${groupId}/${randomUUID()}-${safeName}`;
+    // Drop the uploader's extension, then keep only filename-safe characters and cap length, so a
+    // hostile name can neither build a path nor smuggle a second extension through. Dots are NOT
+    // in the allowed set here — the only dot in the stored name is the one this method adds below.
+    const stem =
+      file.originalname
+        .replace(/\.[^.]*$/, '')
+        .replace(/[^\w-]+/g, '_')
+        .slice(-80) || 'file';
+    // Extension comes from the validated MIME, never from the uploader. See EXTENSION_FOR_MIME.
+    const ext =
+      EXTENSION_FOR_MIME[file.mimetype.toLowerCase()] ?? FALLBACK_EXTENSION;
+    const objectPath = `${groupId}/${randomUUID()}-${stem}.${ext}`;
     return this.configured
       ? this.uploadToSupabase(objectPath, file)
       : this.uploadToLocal(objectPath, file);

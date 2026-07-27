@@ -58,6 +58,7 @@ describe('StorageService.upload', () => {
       expect(stored.url).toMatch(
         /^\/api\/uploads\/group-1\/[0-9a-f-]+-notes\.png$/,
       );
+      // The original name is preserved for DISPLAY, separately from the stored path.
       expect(stored).toMatchObject({
         name: 'notes.png',
         mime: 'image/png',
@@ -73,11 +74,48 @@ describe('StorageService.upload', () => {
         originalname: '../../etc/passwd',
       });
 
-      // Every non-[word/dot/dash] run collapses to '_', so the name cannot climb out of the
-      // group's directory. Exactly two slashes remain: the ones this service put there.
+      // Every non-[word/dash] run collapses to '_', so the name cannot climb out of the group's
+      // directory. Exactly four slashes remain: the ones this service put there.
       expect(stored.url.match(/\//g)).toHaveLength(4); // /api /uploads /group-1 /file
-      expect(stored.url).not.toContain('..%2F');
-      expect(stored.url).toMatch(/-\.{2}_\.{2}_etc_passwd$/);
+      expect(stored.url).not.toContain('..');
+      // Nothing of the hostile name survives as structure — it degenerates to a single '_' stem
+      // with a MIME-derived extension. The real name is still on stored.name for display.
+      expect(stored.url).toMatch(
+        /^\/api\/uploads\/group-1\/[0-9a-f-]+-_\.png$/,
+      );
+      expect(stored.name).toBe('../../etc/passwd');
+    });
+
+    // Regression guard. serve-static picks the response Content-Type from the EXTENSION, while
+    // ParseFilePipe validated the MIME. Carrying the uploader's extension across lets a genuine
+    // PNG be served as text/html from the app's own origin — stored XSS, with the access token
+    // sitting in localStorage. The stored extension must come from the MIME, always.
+    it('never lets an uploader choose the stored extension', async () => {
+      const service = makeService({});
+
+      const stored = await service.upload('group-1', {
+        ...FILE,
+        originalname: 'evil.html',
+        mimetype: 'image/png',
+      });
+
+      expect(stored.url).toMatch(/\.png$/);
+      expect(stored.url).not.toContain('.html');
+      // No second dot anywhere in the stored filename — no `evil.html.png` either.
+      expect(stored.url.split('/').pop()?.match(/\./g)).toHaveLength(1);
+    });
+
+    it('stores an off-allow-list MIME under an inert extension', async () => {
+      const service = makeService({});
+
+      const stored = await service.upload('group-1', {
+        ...FILE,
+        originalname: 'page.svg',
+        mimetype: 'image/svg+xml',
+      });
+
+      // SVG can carry <script>, so it must never be served as image/svg+xml from this origin.
+      expect(stored.url).toMatch(/\.bin$/);
     });
   });
 
