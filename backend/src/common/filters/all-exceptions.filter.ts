@@ -39,7 +39,17 @@ export class AllExceptionsFilter implements ExceptionFilter {
 
     // 5xx means we broke something and need the stack. 4xx is the client's problem and is
     // logged at warn without a stack, so genuine faults stay visible in the noise.
-    if (status >= HttpStatus.INTERNAL_SERVER_ERROR) {
+    //
+    // 503 is the exception on the 5xx side: it is a signal WE raise deliberately (a readiness
+    // probe finding a dependency down, an upstream upload rejecting us), not an unanticipated
+    // throw. Its stack points at the line that raised it and says nothing useful. Left in the
+    // fault branch, a readiness probe polling every few seconds would bury the logs in stack
+    // traces during exactly the incident you need to read them.
+    const isFault =
+      status >= HttpStatus.INTERNAL_SERVER_ERROR &&
+      status !== HttpStatus.SERVICE_UNAVAILABLE;
+
+    if (isFault) {
       this.logger.error(
         `${request.method} ${request.url} -> ${status}`,
         exception instanceof Error ? exception.stack : String(exception),
@@ -142,6 +152,8 @@ export class AllExceptionsFilter implements ExceptionFilter {
         return ErrorCode.NOT_FOUND;
       case HttpStatus.CONFLICT:
         return ErrorCode.CONFLICT;
+      case HttpStatus.SERVICE_UNAVAILABLE:
+        return ErrorCode.SERVICE_UNAVAILABLE;
       default:
         return status >= HttpStatus.INTERNAL_SERVER_ERROR
           ? ErrorCode.INTERNAL_ERROR
