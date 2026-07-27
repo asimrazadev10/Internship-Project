@@ -11,6 +11,15 @@ export const messageKeys = {
   history: (groupId: string) => ["messages", groupId, "history"] as const,
   /** Socket-fed live buffer — populated by SocketProvider on new_message, never polled. */
   live: (groupId: string) => ["messages", groupId, "live"] as const,
+  /**
+   * Search results for one query. Previously hand-built inline in MessageSearch, which broke the
+   * rule groups.ts states out loud — keys are centralised so reads and invalidations agree. It is
+   * not inert either: it shares the "messages" prefix, so any future
+   * invalidateQueries({ queryKey: ["messages", groupId] }) sweeps the search cache too, and
+   * nobody reading this file would have known a third key existed.
+   */
+  search: (groupId: string, q: string) =>
+    ["messages", groupId, "search", q] as const,
 };
 
 const PAGE_SIZE = 20;
@@ -59,4 +68,17 @@ export function useGroupMessages(groupId: string) {
     loadOlder: history.fetchNextPage,
     isLoadingOlder: history.isFetchingNextPage,
   };
+}
+
+/**
+ * Search one group's messages. The caller owns debouncing and the minimum-length gate — those are
+ * UI concerns that also drive whether the dropdown opens — and passes the already-settled query
+ * plus whether it should run.
+ */
+export function useSearchMessages(groupId: string, q: string, enabled: boolean) {
+  return useQuery({
+    queryKey: messageKeys.search(groupId, q),
+    queryFn: () => messagesApi.searchMessages(groupId, q),
+    enabled,
+  });
 }

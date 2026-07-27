@@ -18,14 +18,23 @@ import type { ApiSuccess, AuthTokens } from "./types";
  *   request  → attach the access token as a Bearer header.
  *   response → on a 401, transparently refresh the token once and retry the request.
  */
-export const api = axios.create({ baseURL: "/api" });
+/**
+ * Both axios instances must agree on this, or the refresh call below bypasses the Next rewrite and
+ * 404s — and the very reason two instances exist (avoiding refresh recursion) is what makes it easy
+ * to edit one and forget the other. Module-local rather than a shared constants file: the two uses
+ * are seven lines apart, and next.config.ts declares the matching "/api/:path*" rewrite but cannot
+ * import from src/, so a third "unified" home would be a fiction.
+ */
+const API_BASE_URL = "/api";
+
+export const api = axios.create({ baseURL: API_BASE_URL });
 
 /**
  * A separate, interceptor-free instance used ONLY to call the refresh endpoint. Using `api` for
  * that would recurse: a failed refresh returns 401, which would trigger the response interceptor,
  * which would try to refresh again, forever.
  */
-const refreshClient = axios.create({ baseURL: "/api" });
+const refreshClient = axios.create({ baseURL: API_BASE_URL });
 
 // Allow marking a request as already-retried so a second 401 doesn't loop.
 interface RetryableConfig extends InternalAxiosRequestConfig {

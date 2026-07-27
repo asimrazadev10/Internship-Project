@@ -1,11 +1,10 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 
 import { NoMatchesMark } from "@/components/ui/illustrations";
 import { SEARCH_MAX_QUERY_LENGTH } from "@/lib/api-limits";
-import { searchMessages } from "@/lib/api/messages";
+import { useSearchMessages } from "@/lib/queries/messages";
 
 /** Wait this long after the last keystroke before querying — directly sets request volume. */
 const SEARCH_DEBOUNCE_MS = 300;
@@ -41,11 +40,11 @@ export function MessageSearch({ groupId }: { groupId: string }) {
   const debounced = useDebounced(q.trim(), SEARCH_DEBOUNCE_MS);
   const active = debounced.length >= SEARCH_MIN_QUERY_LENGTH;
 
-  const { data: results = [], isFetching } = useQuery({
-    queryKey: ["messages", groupId, "search", debounced],
-    queryFn: () => searchMessages(groupId, debounced),
-    enabled: active,
-  });
+  const { data: results = [], isFetching } = useSearchMessages(
+    groupId,
+    debounced,
+    active,
+  );
 
   return (
     <div className="relative">
