@@ -1,0 +1,3 @@
+
+# Local file-upload fallback (dev; Supabase is the production path)
+uploads/

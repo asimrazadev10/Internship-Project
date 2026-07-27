@@ -1,0 +1,14 @@
+{
+  "moduleFileExtensions": ["js", "json", "ts"],
+  "rootDir": ".",
+  "testEnvironment": "node",
+  "testRegex": ".e2e-spec.ts$",
+  "transform": {
+    "^.+\\.(t|j)s$": "ts-jest"
+  },
+  "moduleNameMapper": {
+    "^ai$": "<rootDir>/mocks/ai.ts",
+    "^@ai-sdk/google$": "<rootDir>/mocks/ai-sdk-google.ts"
+  },
+  "maxWorkers": 1
+}

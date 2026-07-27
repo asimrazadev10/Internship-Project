@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 300" width="1200" height="300" role="img" aria-label="Convo — real-time group chat">
+  <!--
+    README banner. Self-contained dark treatment so it reads correctly against GitHub's light AND
+    dark themes without needing a <picture> pair.
+
+    Lives at the repo root, not under docs/ — .gitignore keeps docs/ off the remote, so a banner
+    there would render as a broken image for anyone viewing the repo on GitHub.
+
+    Hex is hard-coded and the type uses a system stack: GitHub sanitises SVG and will not load a
+    webfont, so an @font-face here would silently fall back anyway.
+
+    Layout budget: the mark + type occupy x 90-780, y 96-176. The ribbons are kept below y=230 on
+    the left and only rise into the upper right (x > 800), which is empty. Keep that clearance if
+    the tagline ever gets longer.
+  -->
+  <defs>
+    <linearGradient id="ribbon" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#7C3AED"/>
+      <stop offset="50%" stop-color="#6366F1"/>
+      <stop offset="100%" stop-color="#22D3EE"/>
+    </linearGradient>
+    <linearGradient id="chip" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#6366F1"/>
+      <stop offset="100%" stop-color="#22D3EE"/>
+    </linearGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="60"/>
+    </filter>
+  </defs>
+
+  <rect width="1200" height="300" fill="#0F1226"/>
+  <ellipse cx="200" cy="20" rx="340" ry="170" fill="#7C3AED" opacity="0.38" filter="url(#glow)"/>
+  <ellipse cx="1060" cy="70" rx="300" ry="160" fill="#22D3EE" opacity="0.24" filter="url(#glow)"/>
+
+  <g fill="none" stroke="url(#ribbon)" stroke-linecap="round">
+    <path d="M -40 280 C 250 240, 500 300, 760 244 S 1050 130, 1260 160" stroke-width="4" opacity="0.85"/>
+    <path d="M -40 302 C 250 262, 500 322, 760 266 S 1050 152, 1260 182" stroke-width="3" opacity="0.6"/>
+    <path d="M -40 324 C 250 284, 500 344, 760 288 S 1050 174, 1260 204" stroke-width="2" opacity="0.4"/>
+  </g>
+
+  <g transform="translate(90 96)">
+    <rect width="64" height="64" rx="16" fill="url(#chip)"/>
+    <g transform="translate(32 32) scale(2) translate(-16 -16)">
+      <path d="M 3.3 22 C 9.3 14, 18 24, 28.7 12.7" stroke="#fff" stroke-width="2.2" stroke-linecap="round" fill="none" opacity="0.4"/>
+      <circle cx="12" cy="13.3" r="6" fill="#fff" opacity="0.55"/>
+      <circle cx="20" cy="18.7" r="6" fill="#fff"/>
+    </g>
+  </g>
+
+  <text x="176" y="132" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="52" font-weight="800" fill="#E7E9F5" letter-spacing="-1">Convo</text>
+  <text x="176" y="168" font-family="Segoe UI, Helvetica, Arial, sans-serif" font-size="21" fill="#98A0C8">Real-time group chat — NestJS · Postgres · Socket.IO · Next.js</text>
+</svg>

@@ -4,8 +4,11 @@
 # Redis     — used from Phase 3 onward: Socket.IO adapter (multi-node broadcast fan-out)
 #             and, from Phase 4, the BullMQ job store.
 #
-# Values fall back to sane defaults so `docker compose up -d` works with no .env present,
-# while still honouring one if you create it from .env.example.
+# Run from the repo root: `docker compose up -d`.
+#
+# These defaults are the project's real local values (port 55432 avoids colliding with a
+# native Postgres on 5432/5433), so the file is self-sufficient — no .env beside it is needed.
+# The backend's own config lives in backend/.env; its DATABASE_URL must use the same 55432.
 
 services:
   postgres:
@@ -17,7 +20,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-chatpass}
       POSTGRES_DB: ${POSTGRES_DB:-chatdb}
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "${POSTGRES_PORT:-55432}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
