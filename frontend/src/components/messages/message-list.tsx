@@ -1,353 +1,26 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 
-import { Avatar } from "@/components/ui/avatar";
+import { MessageRow } from "@/components/messages/message-row";
 import { EmptyState } from "@/components/ui/empty-state";
 import { EmptyMessages } from "@/components/ui/illustrations";
-import {
-  BUBBLE_CLASS,
-  BUBBLE_OTHER,
-  BUBBLE_OWN,
-  BUBBLE_ROW_CLASS,
-  EYEBROW_CLASS,
-  META_CLASS,
-} from "@/components/ui/styles";
+import { EYEBROW_CLASS } from "@/components/ui/styles";
 import { markRead } from "@/lib/api/groups";
 import { deleteMessage, editMessage, toggleReaction } from "@/lib/api/messages";
 import { getApiErrorMessage } from "@/lib/api/error";
-import type { GroupMemberView, Message, Reaction } from "@/lib/api/types";
+import type { GroupMemberView } from "@/lib/api/types";
 import { useAuth } from "@/lib/auth/auth-context";
 import { useGroupMessages } from "@/lib/queries/messages";
 
-const QUICK_EMOJIS = ["👍", "❤️", "😂", "🎉", "😮", "😢"];
-
-function formatTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-}
-
-function aggregate(reactions: Reaction[], userId?: string) {
-  const map = new Map<string, { emoji: string; count: number; mine: boolean }>();
-  for (const r of reactions) {
-    const cur = map.get(r.emoji) ?? { emoji: r.emoji, count: 0, mine: false };
-    cur.count += 1;
-    if (r.userId === userId) cur.mine = true;
-    map.set(r.emoji, cur);
-  }
-  return [...map.values()];
-}
-
-/** Aggregated reaction chips shown under a bubble. Clicking a chip toggles your own reaction. */
-function ReactionChips({
-  reactions,
-  currentUserId,
-  isOwn,
-  onReact,
-}: {
-  reactions: Reaction[];
-  currentUserId?: string;
-  isOwn: boolean;
-  onReact: (emoji: string) => void;
-}) {
-  const agg = aggregate(reactions, currentUserId);
-  if (agg.length === 0) return null;
-  return (
-    <div className={`mt-1 flex flex-wrap items-center gap-1 ${isOwn ? "justify-end" : ""}`}>
-      {agg.map((r) => (
-        <button
-          key={r.emoji}
-          onClick={() => onReact(r.emoji)}
-          title="Toggle your reaction"
-          className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs transition ${
-            r.mine
-              ? "border-brand bg-brand-soft text-brand-strong"
-              : "border-line bg-surface text-muted hover:border-line-strong"
-          }`}
-        >
-          <span>{r.emoji}</span>
-          <span className="tabular-nums">{r.count}</span>
-        </button>
-      ))}
-    </div>
-  );
-}
-
-
-function Attachment({
-  url,
-  name,
-  mime,
-}: {
-  url: string;
-  name: string | null;
-  mime: string | null;
-}) {
-  if (mime?.startsWith("image/")) {
-    return (
-      <a href={url} target="_blank" rel="noopener noreferrer" className="block">
-        {/* eslint-disable-next-line @next/next/no-img-element -- external Supabase URL; next/image would need per-host config */}
-        <img
-          src={url}
-          alt={name ?? "attachment"}
-          className="max-h-64 max-w-full rounded-xl object-cover"
-        />
-      </a>
-    );
-  }
-  return (
-    <a
-      href={url}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="inline-flex items-center gap-2 rounded-xl border border-line bg-surface px-3 py-2 text-sm text-ink transition hover:border-line-strong"
-    >
-      <span aria-hidden>📄</span>
-      <span className="max-w-[16rem] truncate">{name ?? "Download file"}</span>
-    </a>
-  );
-}
-
-function MessageRow({
-  message,
-  isOwn,
-  currentUserId,
-  onReact,
-  onEdit,
-  onDelete,
-  seenBy,
-}: {
-  message: Message;
-  isOwn: boolean;
-  currentUserId?: string;
-  onReact: (messageId: string, emoji: string) => void;
-  onEdit: (messageId: string, content: string) => void;
-  onDelete: (messageId: string) => void;
-  seenBy?: string[] | null;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState(message.content);
-  const [showPalette, setShowPalette] = useState(false);
-  const [confirming, setConfirming] = useState(false);
-
-  if (message.type === "AI_SUMMARY") {
-    return (
-      <li className="mx-auto w-full max-w-[92%] rounded-2xl border border-brand/40 bg-brand-soft/60 p-4 shadow-sm">
-        <div className="mb-1.5 flex items-center gap-2 font-mono text-[11px] uppercase tracking-wide text-brand-strong">
-          <span aria-hidden>✨</span>
-          <span>Daily Summary</span>
-          <span className="ml-auto text-muted">{formatTime(message.createdAt)}</span>
-        </div>
-        <p className="whitespace-pre-wrap break-words text-sm text-ink">{message.content}</p>
-      </li>
-    );
-  }
-
-  // System messages have no human sender — centred and quiet.
-  if (message.senderId === null) {
-    return (
-      <li className="mx-auto max-w-[80%] rounded-full bg-surface-2 px-3.5 py-1.5 text-center text-xs text-muted">
-        {message.content}
-      </li>
-    );
-  }
-
-  const senderName = message.sender?.name ?? "Someone";
-
-  // Soft-deleted tombstone — the row stays so history has no gaps.
-  if (message.deletedAt) {
-    return (
-      <li className={`flex items-end gap-2.5 ${isOwn ? "flex-row-reverse" : ""}`}>
-        {!isOwn && <Avatar name={senderName} id={message.senderId} size={30} />}
-        <div className="max-w-[78%] rounded-2xl border border-dashed border-line px-3.5 py-2 text-sm italic text-muted">
-          This message was deleted
-        </div>
-      </li>
-    );
-  }
-
-  function save() {
-    const trimmed = draft.trim();
-    if (trimmed && trimmed !== message.content) onEdit(message.id, trimmed);
-    setEditing(false);
-  }
-
-  return (
-    <li
-      className={`group ${BUBBLE_ROW_CLASS} ${isOwn ? "flex-row-reverse" : ""}`}
-      onMouseLeave={() => {
-        setShowPalette(false);
-        setConfirming(false);
-      }}
-    >
-      {!isOwn && <Avatar name={senderName} id={message.senderId} size={30} />}
-      <div className={`flex max-w-[78%] flex-col gap-0.5 ${isOwn ? "items-end" : "items-start"}`}>
-        <div className={`${META_CLASS} flex items-baseline gap-2 px-1`}>
-          {!isOwn && <span className="uppercase tracking-wide">{senderName}</span>}
-          <span>{formatTime(message.createdAt)}</span>
-          {message.editedAt && <span>· edited</span>}
-        </div>
-
-        {editing ? (
-          <div className={`flex flex-col gap-1 ${isOwn ? "items-end" : ""}`}>
-            <textarea
-              aria-label="Edit message"
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
-                  e.preventDefault();
-                  save();
-                }
-                if (e.key === "Escape") setEditing(false);
-              }}
-              rows={2}
-              autoFocus
-              className="w-64 resize-none rounded-2xl border border-line bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-brand"
-            />
-            <div className="flex gap-3 text-xs">
-              <button onClick={save} className="font-semibold text-brand-strong">
-                Save
-              </button>
-              <button
-                onClick={() => {
-                  setDraft(message.content);
-                  setEditing(false);
-                }}
-                className="text-muted"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        ) : (
-          <div className="relative">
-            <div
-              className={`${BUBBLE_CLASS} flex flex-col gap-2 ${
-                isOwn ? BUBBLE_OWN : BUBBLE_OTHER
-              }`}
-            >
-              {message.attachmentUrl && (
-                <Attachment
-                  url={message.attachmentUrl}
-                  name={message.attachmentName}
-                  mime={message.attachmentMime}
-                />
-              )}
-              {message.content && (
-                <p className="whitespace-pre-wrap break-words">{message.content}</p>
-              )}
-            </div>
-
-            {/* Hover action bar — floats on the OUTER side of the bubble, clear of text and meta. */}
-            <div
-              className={`absolute top-1/2 flex -translate-y-1/2 items-center gap-0.5 rounded-full border border-line bg-surface p-1 opacity-0 shadow-md transition group-hover:opacity-100 focus-within:opacity-100 ${
-                isOwn ? "right-full mr-2" : "left-full ml-2"
-              }`}
-            >
-              <button
-                onClick={() => {
-                  setShowPalette((v) => !v);
-                  setConfirming(false);
-                }}
-                title="Add reaction"
-                aria-label="Add reaction"
-                className="rounded-full px-1.5 py-1 text-sm leading-none transition hover:bg-surface-2"
-              >
-                😊
-              </button>
-              {isOwn && (
-                <>
-                  <button
-                    onClick={() => {
-                      setDraft(message.content);
-                      setEditing(true);
-                      setShowPalette(false);
-                    }}
-                    title="Edit"
-                    aria-label="Edit message"
-                    className="rounded-full px-1.5 py-1 text-sm leading-none transition hover:bg-surface-2"
-                  >
-                    ✏️
-                  </button>
-                  <button
-                    onClick={() => {
-                      setConfirming(true);
-                      setShowPalette(false);
-                    }}
-                    title="Delete"
-                    aria-label="Delete message"
-                    className="rounded-full px-1.5 py-1 text-sm leading-none transition hover:bg-surface-2"
-                  >
-                    🗑️
-                  </button>
-                </>
-              )}
-            </div>
-
-            {/* Emoji palette — opened by the react button, closes on pick or mouse-leave. */}
-            {showPalette && (
-              <div
-                className={`absolute bottom-full z-20 mb-1 flex items-center gap-0.5 rounded-full border border-line bg-surface px-1.5 py-1 shadow-lg ${
-                  isOwn ? "right-0" : "left-0"
-                }`}
-              >
-                {QUICK_EMOJIS.map((e) => (
-                  <button
-                    key={e}
-                    onClick={() => {
-                      onReact(message.id, e);
-                      setShowPalette(false);
-                    }}
-                    title={`React ${e}`}
-                    className="rounded-full px-1.5 py-0.5 text-base leading-none transition hover:bg-surface-2"
-                  >
-                    {e}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {/* Inline delete confirm — no blocking native dialog. */}
-            {confirming && (
-              <div
-                className={`absolute bottom-full z-20 mb-1 flex items-center gap-3 whitespace-nowrap rounded-xl border border-line bg-surface px-3 py-2 text-xs shadow-lg ${
-                  isOwn ? "right-0" : "left-0"
-                }`}
-              >
-                <span className="text-muted">Delete this message?</span>
-                <button
-                  onClick={() => {
-                    onDelete(message.id);
-                    setConfirming(false);
-                  }}
-                  className="font-semibold text-brand-strong"
-                >
-                  Delete
-                </button>
-                <button onClick={() => setConfirming(false)} className="text-muted">
-                  Cancel
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-
-        <ReactionChips
-          reactions={message.reactions}
-          currentUserId={currentUserId}
-          isOwn={isOwn}
-          onReact={(emoji) => onReact(message.id, emoji)}
-        />
-        {seenBy && seenBy.length > 0 && (
-          <p className="px-1 text-[10px] text-muted">
-            Seen by {seenBy.length === 1 ? seenBy[0] : `${seenBy.length} people`}
-          </p>
-        )}
-      </div>
-    </li>
-  );
-}
-
+/**
+ * The scroll container: loading/error/empty branches, the load-older control, the mutations, and
+ * the "seen by" computation. Rendering a single message is MessageRow's job.
+ *
+ * The mutations are deliberately fire-and-forget — the UI updates when the resulting broadcast
+ * (reaction_updated / message_updated / new_message) lands, so a message never appears twice via
+ * an optimistic write plus its own echo.
+ */
 export function MessageList({
   groupId,
   members,
@@ -356,12 +29,18 @@ export function MessageList({
   members: GroupMemberView[];
 }) {
   const { user } = useAuth();
-  const { messages, isLoading, isError, error, hasOlder, loadOlder, isLoadingOlder } =
-    useGroupMessages(groupId);
+  const {
+    messages,
+    isLoading,
+    isError,
+    error,
+    hasOlder,
+    loadOlder,
+    isLoadingOlder,
+  } = useGroupMessages(groupId);
 
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  // Mutations — the UI updates when the broadcast (reaction_updated / message_updated) lands.
   const react = (messageId: string, emoji: string) =>
     void toggleReaction(groupId, messageId, emoji).catch(() => {});
   const edit = (messageId: string, content: string) =>
@@ -372,6 +51,9 @@ export function MessageList({
   const newestId = messages[messages.length - 1]?.id;
   useEffect(() => {
     bottomRef.current?.scrollIntoView();
+    // Only mark read when the tab is actually visible — otherwise a background tab would report
+    // the user as having seen messages they have not looked at. The rejection is swallowed
+    // deliberately: a failed read receipt is cosmetic and must not surface as an error.
     if (
       newestId &&
       typeof document !== "undefined" &&
