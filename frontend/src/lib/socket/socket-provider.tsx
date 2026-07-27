@@ -17,7 +17,14 @@ import { groupKeys } from "@/lib/queries/groups";
 import { messageKeys } from "@/lib/queries/messages";
 import { SERVER_EVENTS } from "./socket-events";
 
-const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL ?? "http://localhost:3000";
+/**
+ * No `?? "http://localhost:3000"` fallback on purpose. A silent default here is the worst outcome:
+ * deploy with the var unset and the app builds, renders, and quietly dials localhost forever while
+ * the Live pill reads "Connecting…". next.config.ts throws at build/dev-start if it is missing, so
+ * by the time this module is bundled the value is guaranteed — hence the assertion rather than a
+ * runtime guard, which would have to live in the client bundle.
+ */
+const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL as string;
 
 interface SocketValue {
   socket: Socket | null;
