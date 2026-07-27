@@ -10,6 +10,14 @@ import * as groupsApi from "@/lib/api/groups";
  * Query keys are centralised so reads and the invalidations after a mutation always agree on the
  * same key. A typo'd key would silently fail to refetch, so this is the one source of truth.
  */
+/**
+ * Note the shape: `all` is a PREFIX of `detail(id)`. TanStack matches by prefix, so an
+ * invalidation of `all` without `exact` also invalidates every cached group detail — which is why
+ * both mutations below pass `exact: true`. They only need the list to refetch; sweeping the
+ * details as well would discard state that is already correct, including the member list
+ * SocketProvider patches in place on `member_joined` (it passes `exact: true` for that same
+ * reason). Use `groupKeys.detail(id)` to target one group deliberately.
+ */
 export const groupKeys = {
   all: ["groups"] as const,
   detail: (id: string) => ["groups", id] as const,
@@ -37,7 +45,8 @@ export function useCreateGroup() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (name: string) => groupsApi.createGroup(name),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: groupKeys.all }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: groupKeys.all, exact: true }),
   });
 }
 
@@ -46,6 +55,7 @@ export function useJoinGroup() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (id: string) => groupsApi.joinGroup(id),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: groupKeys.all }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: groupKeys.all, exact: true }),
   });
 }
