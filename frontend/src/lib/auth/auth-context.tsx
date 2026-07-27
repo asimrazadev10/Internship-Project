@@ -10,9 +10,9 @@ import {
 } from "react";
 
 import * as authApi from "@/lib/api/auth";
-import { tokenStore } from "@/lib/api/tokens";
+import { tokenStore, userStore } from "@/lib/api/session";
 import type { User } from "@/lib/api/types";
-import { AUTH_LOGOUT_EVENT, USER_KEY } from "@/lib/storage-keys";
+import { AUTH_LOGOUT_EVENT } from "@/lib/storage-keys";
 
 /**
  * Holds the current session and exposes the auth actions.
@@ -42,23 +42,6 @@ interface AuthContextValue {
   logout: () => Promise<void>;
 }
 
-function readStoredUser(): User | null {
-  try {
-    const raw = window.localStorage.getItem(USER_KEY);
-    return raw ? (JSON.parse(raw) as User) : null;
-  } catch {
-    return null;
-  }
-}
-
-function persistUser(user: User | null): void {
-  if (user) {
-    window.localStorage.setItem(USER_KEY, JSON.stringify(user));
-  } else {
-    window.localStorage.removeItem(USER_KEY);
-  }
-}
-
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -77,7 +60,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // this is exactly the case set-state-in-effect exists to make you think about.
     /* eslint-disable react-hooks/set-state-in-effect */
     if (tokenStore.isAuthenticated) {
-      setUser(readStoredUser());
+      setUser(userStore.get());
       setStatus("authenticated");
     } else {
       setStatus("unauthenticated");
@@ -90,7 +73,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     function onForcedLogout() {
       setUser(null);
-      persistUser(null);
+      userStore.set(null);
       setStatus("unauthenticated");
       router.replace("/login");
     }
@@ -101,7 +84,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = useCallback(async (email: string, password: string) => {
     const result = await authApi.login({ email, password });
     setUser(result.user);
-    persistUser(result.user);
+    userStore.set(result.user);
     setStatus("authenticated");
   }, []);
 
@@ -109,7 +92,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     async (input: { email: string; password: string; name: string }) => {
       const result = await authApi.register(input);
       setUser(result.user);
-      persistUser(result.user);
+      userStore.set(result.user);
       setStatus("authenticated");
     },
     [],
@@ -118,14 +101,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const googleLogin = useCallback(async (idToken: string) => {
     const result = await authApi.googleLogin(idToken);
     setUser(result.user);
-    persistUser(result.user);
+    userStore.set(result.user);
     setStatus("authenticated");
   }, []);
 
   const logout = useCallback(async () => {
     await authApi.logout();
     setUser(null);
-    persistUser(null);
+    userStore.set(null);
     setStatus("unauthenticated");
     router.replace("/login");
   }, [router]);

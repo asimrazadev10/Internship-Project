@@ -1,9 +1,11 @@
 "use client";
 
 import { AppHeader } from "@/components/app-header";
-import { CreateGroupForm } from "@/components/groups/create-group-form";
 import { GroupList } from "@/components/groups/group-list";
-import { JoinGroupForm } from "@/components/groups/join-group-form";
+import {
+  CreateGroupForm,
+  JoinGroupForm,
+} from "@/components/groups/group-forms";
 import { EYEBROW_CLASS } from "@/components/ui/styles";
 import { useAuth } from "@/lib/auth/auth-context";
 import { useRequireAuth } from "@/lib/auth/use-require-auth";

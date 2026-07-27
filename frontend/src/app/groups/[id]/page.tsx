@@ -14,8 +14,7 @@ import { getApiErrorMessage } from "@/lib/api/error";
 import { useRequireAuth } from "@/lib/auth/use-require-auth";
 import { useGroup } from "@/lib/queries/groups";
 import { useSocket } from "@/lib/socket/socket-provider";
-import { useGroupRoom } from "@/lib/socket/use-group-room";
-import { usePresence } from "@/lib/socket/use-presence";
+import { useGroupRoom, usePresence } from "@/lib/socket/use-group-room";
 import { useTyping } from "@/lib/socket/use-typing";
 
 function typingLabel(names: string[]): string {

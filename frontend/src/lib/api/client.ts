@@ -5,7 +5,7 @@ import axios, {
 } from "axios";
 
 import { AUTH_LOGOUT_EVENT } from "@/lib/storage-keys";
-import { tokenStore } from "./tokens";
+import { tokenStore } from "./session";
 import type { ApiSuccess, AuthTokens } from "./types";
 
 /**

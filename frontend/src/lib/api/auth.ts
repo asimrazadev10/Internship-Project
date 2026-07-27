@@ -1,5 +1,5 @@
 import { api } from "./client";
-import { tokenStore } from "./tokens";
+import { tokenStore } from "./session";
 import type { ApiSuccess, AuthResult } from "./types";
 
 /**

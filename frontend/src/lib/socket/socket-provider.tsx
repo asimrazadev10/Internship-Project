@@ -4,7 +4,7 @@ import { type InfiniteData, useQueryClient } from "@tanstack/react-query";
 import { createContext, useContext, useEffect, useState } from "react";
 import { io, type Socket } from "socket.io-client";
 
-import { tokenStore } from "@/lib/api/tokens";
+import { tokenStore } from "@/lib/api/session";
 import type {
   GroupDetail,
   GroupMemberView,
