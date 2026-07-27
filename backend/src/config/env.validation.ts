@@ -168,10 +168,11 @@ export class EnvironmentVariables {
   NOTIFICATION_WORKER_CONCURRENCY: number =
     WORKER_CONCURRENCY.NOTIFICATION.default;
 
-  // Bonus (file uploads) — Supabase Storage. All optional: the app boots without them and the
-  // upload endpoint returns 503 until they're set. Only these three are needed because the
-  // backend uses the Storage REST API directly (no SDK): the project URL, a service-role key
-  // (server-side only — never shipped to the browser), and the target bucket name.
+  // Bonus (file uploads) — Supabase Storage. URL and key are optional: without them the service
+  // falls back to writing under uploads/ on local disk, so uploads work with no external setup.
+  // Only these three are needed because the backend uses the Storage REST API directly (no SDK):
+  // the project URL, a service-role key (server-side only — never shipped to the browser), and
+  // the target bucket name.
   @IsString()
   @IsOptional()
   SUPABASE_URL?: string;
@@ -180,9 +181,11 @@ export class EnvironmentVariables {
   @IsOptional()
   SUPABASE_SERVICE_KEY?: string;
 
+  // Defaulted here rather than in StorageService, so the schema is the single place any default
+  // is declared — the same rule PORT, REDIS_HOST and GEMINI_MODEL follow. Only consulted on the
+  // Supabase path; the local-disk fallback ignores it.
   @IsString()
-  @IsOptional()
-  SUPABASE_BUCKET?: string;
+  SUPABASE_BUCKET: string = 'chat-uploads';
 }
 
 export function validateEnv(
