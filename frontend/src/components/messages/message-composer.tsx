@@ -2,13 +2,18 @@
 
 import { useRef, useState } from "react";
 
+import { MESSAGE_MAX_LENGTH } from "@/lib/api-limits";
 import { uploadFile } from "@/lib/api/messages";
 import { getApiErrorMessage } from "@/lib/api/error";
 import { useSocket } from "@/lib/socket/socket-provider";
+import { CLIENT_EVENTS, type SendMessageAck } from "@/lib/socket/socket-events";
 
 const ACCEPT = "image/png,image/jpeg,image/gif,image/webp,application/pdf";
 
-/** Message input. Enter sends; Shift+Enter newlines. Capped at 4000 like the backend DTO. */
+/**
+ * Message input. Enter sends; Shift+Enter newlines. The length cap comes from api-limits, which
+ * mirrors the backend rule enforced on both the HTTP and WebSocket paths.
+ */
 export function MessageComposer({
   groupId,
   onType,
@@ -51,15 +56,18 @@ export function MessageComposer({
     socket
       .timeout(5000)
       .emit(
-        "send_message",
+        CLIENT_EVENTS.SEND_MESSAGE,
         { groupId, content: trimmed },
-        (err: unknown, ack: { ok: boolean; error?: string } | undefined) => {
+        (err: unknown, ack: SendMessageAck | undefined) => {
           setSending(false);
           if (err) return setError("Couldn't reach the server");
-          if (!ack?.ok) return setError(ack?.error ?? "Couldn't send message");
+          if (!ack || !ack.ok) {
+            return setError(ack?.error ?? "Couldn't send message");
+          }
           setContent("");
           onStopTyping?.();
-          // The message arrives via the new_message broadcast (to the sender too).
+          // The message arrives via the new_message broadcast (to the sender too), so the
+          // `message` on the ack is intentionally unused here rather than inserted twice.
         },
       );
   }
@@ -99,7 +107,7 @@ export function MessageComposer({
           aria-label="Message"
           placeholder="Write a message…"
           rows={1}
-          maxLength={4000}
+          maxLength={MESSAGE_MAX_LENGTH}
           value={content}
           onChange={(e) => {
             setContent(e.target.value);
