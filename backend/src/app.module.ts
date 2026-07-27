@@ -15,6 +15,7 @@ import { ResponseInterceptor } from './common/interceptors/response.interceptor'
 import { AuthModule } from './auth/auth.module';
 import { ChatModule } from './chat/chat.module';
 import { GroupsModule } from './groups/groups.module';
+import { HealthModule } from './health/health.module';
 import { MessagesModule } from './messages/messages.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { SummaryModule } from './summary/summary.module';
@@ -40,6 +41,7 @@ import { UsersModule } from './users/users.module';
       inject: [ConfigService],
       useFactory: bullConnectionFactory,
     }),
+    HealthModule,
     SummaryModule,
     UsersModule,
     AuthModule,

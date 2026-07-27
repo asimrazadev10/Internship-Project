@@ -147,6 +147,20 @@ All responses share one envelope:
 { "success": false, "error": { "code": "…", "message": "…", "details": [ ] } }
 ```
 
+### Health (public)
+
+| Method | Path | Notes |
+|---|---|---|
+| GET | `/health` | Liveness — touches nothing, cannot flap |
+| GET | `/health/ready` | Readiness — pings Postgres and Redis; 503 if either is down |
+
+Two endpoints, not one, because they answer different questions. Liveness asks *"should this
+process be restarted?"*; readiness asks *"can it serve traffic right now?"*. A liveness probe
+that checks the database would restart a healthy process during a brief DB blip — turning a
+partial outage into a total one, and dropping every in-memory WebSocket connection with it.
+Each dependency check is bounded by a short timeout, since an unreachable database stops
+answering rather than refusing.
+
 ### Auth (public)
 
 | Method | Path | Body | Notes |
