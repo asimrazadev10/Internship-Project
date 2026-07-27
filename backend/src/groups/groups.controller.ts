@@ -11,7 +11,7 @@ import {
 
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { ResponseMessage } from '../common/decorators/response-message.decorator';
-import { GroupMemberGuard } from '../common/guards/group-member.guard';
+import { GroupMemberGuard } from './group-member.guard';
 import { ParseUuidPipe } from '../common/pipes/parse-uuid.pipe';
 import { CreateGroupDto } from './dto/create-group.dto';
 import { GroupsService } from './groups.service';

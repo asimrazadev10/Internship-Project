@@ -2,7 +2,7 @@ import { Body, Controller, Param, Post, UseGuards } from '@nestjs/common';
 
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { ResponseMessage } from '../common/decorators/response-message.decorator';
-import { GroupMemberGuard } from '../common/guards/group-member.guard';
+import { GroupMemberGuard } from '../groups/group-member.guard';
 import { ParseUuidPipe } from '../common/pipes/parse-uuid.pipe';
 import { ToggleReactionDto } from './dto/toggle-reaction.dto';
 import { ReactionsService } from './reactions.service';

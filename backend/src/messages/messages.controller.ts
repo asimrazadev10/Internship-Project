@@ -20,7 +20,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { ResponseMessage } from '../common/decorators/response-message.decorator';
 import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
-import { GroupMemberGuard } from '../common/guards/group-member.guard';
+import { GroupMemberGuard } from '../groups/group-member.guard';
 import { ParseUuidPipe } from '../common/pipes/parse-uuid.pipe';
 import { StorageService, type UploadedFileLike } from '../storage/storage.service';
 import { CreateMessageDto } from './dto/create-message.dto';

@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { Group, MemberRole, Prisma } from '@prisma/client';
+import { Group, GroupMember, MemberRole, Prisma } from '@prisma/client';
 
 import { NOT_A_MEMBER_MESSAGE } from '../common/error-messages';
 import { PrismaService } from '../prisma/prisma.service';
@@ -134,8 +134,12 @@ export class GroupsService {
   /**
    * The single membership rule, shared by HTTP (GroupMemberGuard) and WS (ChatGateway).
    * Same response for a missing group and a non-member — doesn't leak which groups exist.
+   *
+   * Returns the membership row rather than void so the HTTP guard can stash it on the request for
+   * handlers that need the caller's role, without issuing a second identical query. Callers that
+   * only need the assertion (ChatGateway) simply ignore the return.
    */
-  async assertMember(userId: string, groupId: string): Promise<void> {
+  async assertMember(userId: string, groupId: string): Promise<GroupMember> {
     if (!isUuid(groupId)) {
       throw new ForbiddenException(NOT_A_MEMBER_MESSAGE);
     }
@@ -145,6 +149,7 @@ export class GroupsService {
     if (!membership) {
       throw new ForbiddenException(NOT_A_MEMBER_MESSAGE);
     }
+    return membership;
   }
 
   /**
