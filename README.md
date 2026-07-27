@@ -56,7 +56,7 @@ npm install
 cp .env.example .env
 #    - generate two different JWT secrets, e.g.:  openssl rand -base64 48
 #    - set GOOGLE_CLIENT_ID to your Google Cloud OAuth client id (for /auth/google)
-#    - DATABASE_URL must use port 55432 (the port docker-compose publishes)
+#    - the shipped DATABASE_URL already uses port 55432, the port docker-compose publishes
 
 # 4. Apply migrations (creates the schema)
 npx prisma migrate dev
@@ -80,7 +80,9 @@ All backend commands run from `backend/` (except `docker compose`, which runs fr
 npm run start:dev       # API with watch reload
 npm run start:prod      # build + run compiled output
 npm run build           # compile
-npm run lint            # eslint --fix
+npm run lint            # eslint — reports, does not modify
+npm run lint:fix        # eslint --fix
+npm run format:check    # prettier, check only
 npm run test:e2e        # end-to-end tests (needs Postgres running)
 npm run prisma:studio   # browse the database
 npm run prisma:migrate  # prisma migrate dev
@@ -100,6 +102,37 @@ refuses to boot on a missing or malformed value rather than failing later on a r
 | `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET` | **Different** secrets for access vs refresh signing |
 | `JWT_ACCESS_EXPIRES_IN`, `JWT_REFRESH_EXPIRES_IN` | Token lifetimes (e.g. `15m`, `7d`) |
 | `GOOGLE_CLIENT_ID` | Google OAuth client id; the audience a Google ID token must carry |
+| `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `SUPABASE_BUCKET` | **Optional** — file uploads. See below |
+
+---
+
+## File uploads
+
+`POST /groups/:id/messages/upload` (multipart: `file`, optional `content` caption) attaches a
+file to a message. Images and PDFs only, 5 MB max, enforced by `ParseFilePipe` *before* the
+handler runs — validation inspects the actual bytes, not just the declared type. The resulting
+message is broadcast like any other, so attachments stream live and land in history.
+
+**Two storage backends, chosen at runtime — no code change between them:**
+
+| | When | Where the bytes go | URL returned |
+|---|---|---|---|
+| **Supabase Storage** | `SUPABASE_URL` + `SUPABASE_SERVICE_KEY` set | Supabase bucket, via the Storage REST API | Absolute public URL |
+| **Local disk** | either unset | `backend/uploads/<groupId>/` | `/api/uploads/…`, via the Next proxy |
+
+The fallback exists so uploads work on a fresh clone with no external account. Set the two
+Supabase variables to switch; nothing else changes. The service-role key is server-side only and
+never reaches the browser.
+
+For Supabase, create a **public** bucket (so the returned URLs load directly) and set
+`SUPABASE_BUCKET` to its name — it defaults to `chat-uploads`.
+
+> **Why the stored filename is rewritten.** The extension is derived from the validated MIME
+> type, never from the uploader's filename. Express serves static files with a `Content-Type`
+> taken from the *extension*, while validation checked the *bytes* — so preserving a user-supplied
+> extension would let a real PNG named `evil.html` come back as `text/html` from the app's own
+> origin, which is stored XSS with the access token in `localStorage`. Local uploads are
+> additionally served with `nosniff` and a `sandbox` CSP.
 
 ---
 
@@ -134,6 +167,7 @@ All responses share one envelope:
 | POST | `/groups/:id/join` | Join a group (see model below) |
 | POST | `/groups/:id/messages` | Post a message — **members only** |
 | GET | `/groups/:id/messages?limit=&cursor=` | History, newest first — **members only** |
+| POST | `/groups/:id/messages/upload` | Attach a file (multipart) — **members only** |
 
 ### Join model
 
