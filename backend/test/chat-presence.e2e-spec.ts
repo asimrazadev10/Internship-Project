@@ -31,7 +31,9 @@ describe('Online presence (e2e)', () => {
   let member2Token: string;
 
   beforeAll(async () => {
-    const mod = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    const mod = await Test.createTestingModule({
+      imports: [AppModule],
+    }).compile();
     app = mod.createNestApplication();
     prisma = app.get(PrismaService);
     await app.init();
@@ -40,10 +42,18 @@ describe('Online presence (e2e)', () => {
 
     const stamp = Date.now();
     const member = await prisma.user.create({
-      data: { email: `pres-a-${stamp}@example.com`, name: 'PresA', password: 'x' },
+      data: {
+        email: `pres-a-${stamp}@example.com`,
+        name: 'PresA',
+        password: 'x',
+      },
     });
     const member2 = await prisma.user.create({
-      data: { email: `pres-b-${stamp}@example.com`, name: 'PresB', password: 'x' },
+      data: {
+        email: `pres-b-${stamp}@example.com`,
+        name: 'PresB',
+        password: 'x',
+      },
     });
     memberId = member.id;
     member2Id = member2.id;
@@ -52,18 +62,32 @@ describe('Online presence (e2e)', () => {
       data: { name: 'Presence Group', createdBy: memberId },
     });
     groupId = group.id;
-    await prisma.groupMember.create({ data: { groupId, userId: memberId, role: 'OWNER' } });
-    await prisma.groupMember.create({ data: { groupId, userId: member2Id, role: 'MEMBER' } });
+    await prisma.groupMember.create({
+      data: { groupId, userId: memberId, role: 'OWNER' },
+    });
+    await prisma.groupMember.create({
+      data: { groupId, userId: member2Id, role: 'MEMBER' },
+    });
 
     const jwt = app.get(JwtService);
-    const secret = app.get(ConfigService).getOrThrow<string>('JWT_ACCESS_SECRET');
-    memberToken = await jwt.signAsync({ sub: memberId, email: member.email }, { secret, expiresIn: '5m' });
-    member2Token = await jwt.signAsync({ sub: member2Id, email: member2.email }, { secret, expiresIn: '5m' });
+    const secret = app
+      .get(ConfigService)
+      .getOrThrow<string>('JWT_ACCESS_SECRET');
+    memberToken = await jwt.signAsync(
+      { sub: memberId, email: member.email },
+      { secret, expiresIn: '5m' },
+    );
+    member2Token = await jwt.signAsync(
+      { sub: member2Id, email: member2.email },
+      { secret, expiresIn: '5m' },
+    );
   });
 
   afterAll(async () => {
     await prisma.group.deleteMany({ where: { id: groupId } });
-    await prisma.user.deleteMany({ where: { id: { in: [memberId, member2Id] } } });
+    await prisma.user.deleteMany({
+      where: { id: { in: [memberId, member2Id] } },
+    });
     await app.close();
   });
 

@@ -36,14 +36,12 @@ export class GroupMemberGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {
     // Typed params: every route this guard protects is nested under :id (the group id), so the
     // generic states that rather than letting it widen to string | string[].
-    const request = context
-      .switchToHttp()
-      .getRequest<
-        Request<{ id: string }> & {
-          user?: AuthUser;
-          groupMembership?: GroupMember;
-        }
-      >();
+    const request = context.switchToHttp().getRequest<
+      Request<{ id: string }> & {
+        user?: AuthUser;
+        groupMembership?: GroupMember;
+      }
+    >();
 
     const user = request.user;
     if (!user) {

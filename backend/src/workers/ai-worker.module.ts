@@ -14,7 +14,10 @@ import { GenerateProcessor } from '../summary/stages/generate.processor';
 @Module({
   imports: [
     AppConfigModule,
-    BullModule.forRootAsync({ inject: [ConfigService], useFactory: bullConnectionFactory }),
+    BullModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: bullConnectionFactory,
+    }),
     BullModule.registerQueue({ name: AI_QUEUE }),
     AiModule,
   ],

@@ -83,7 +83,9 @@ describe('intFromEnv', () => {
 
 describe('firstChildValue', () => {
   it('returns the single child return value', () => {
-    expect(firstChildValue({ 'bull:q:jid': { skipped: true } })).toEqual({ skipped: true });
+    expect(firstChildValue({ 'bull:q:jid': { skipped: true } })).toEqual({
+      skipped: true,
+    });
   });
   it('returns undefined when there are no children', () => {
     expect(firstChildValue({})).toBeUndefined();

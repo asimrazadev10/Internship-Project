@@ -74,6 +74,8 @@ describe('SummaryMessagesService.findForSummary', () => {
 describe('SummaryMessagesService.hasSummarySince', () => {
   it('is false when no AI_SUMMARY exists in the window', async () => {
     const { service } = makeService();
-    await expect(service.hasSummarySince('g1', new Date())).resolves.toBe(false);
+    await expect(service.hasSummarySince('g1', new Date())).resolves.toBe(
+      false,
+    );
   });
 });

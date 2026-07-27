@@ -16,8 +16,7 @@ export type GenerateResult =
 
 /** save-summary's return value, read by publish-summary. */
 export type SaveResult =
-  | { skipped: true }
-  | { skipped: false; message: BroadcastMessage };
+  { skipped: true } | { skipped: false; message: BroadcastMessage };
 
 /** publish-summary's return value, read by the group-summary parent. */
 export type PublishResult = { published: boolean };

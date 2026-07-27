@@ -20,7 +20,9 @@ describe('validateEnv — Phase 4 keys', () => {
   it('rejects a missing GOOGLE_GENERATIVE_AI_API_KEY', () => {
     const { GOOGLE_GENERATIVE_AI_API_KEY, ...withoutKey } = base;
     void GOOGLE_GENERATIVE_AI_API_KEY;
-    expect(() => validateEnv(withoutKey)).toThrow(/GOOGLE_GENERATIVE_AI_API_KEY/);
+    expect(() => validateEnv(withoutKey)).toThrow(
+      /GOOGLE_GENERATIVE_AI_API_KEY/,
+    );
   });
 
   it('coerces SUMMARY_INTERVAL_MS from a string', () => {

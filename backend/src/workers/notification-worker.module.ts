@@ -11,7 +11,10 @@ import { PublishProcessor } from '../summary/stages/publish.processor';
 @Module({
   imports: [
     AppConfigModule,
-    BullModule.forRootAsync({ inject: [ConfigService], useFactory: bullConnectionFactory }),
+    BullModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: bullConnectionFactory,
+    }),
     BullModule.registerQueue({ name: NOTIFICATION_QUEUE }),
     NotificationsModule,
   ],

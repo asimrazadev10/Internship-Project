@@ -36,7 +36,9 @@ describe('Read receipts (e2e)', () => {
   const server = () => app.getHttpServer();
 
   beforeAll(async () => {
-    const mod = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    const mod = await Test.createTestingModule({
+      imports: [AppModule],
+    }).compile();
     app = mod.createNestApplication();
     prisma = app.get(PrismaService);
     await app.init();
@@ -45,33 +47,64 @@ describe('Read receipts (e2e)', () => {
 
     const stamp = Date.now();
     const member = await prisma.user.create({
-      data: { email: `read-a-${stamp}@example.com`, name: 'ReadA', password: 'x' },
+      data: {
+        email: `read-a-${stamp}@example.com`,
+        name: 'ReadA',
+        password: 'x',
+      },
     });
     const member2 = await prisma.user.create({
-      data: { email: `read-b-${stamp}@example.com`, name: 'ReadB', password: 'x' },
+      data: {
+        email: `read-b-${stamp}@example.com`,
+        name: 'ReadB',
+        password: 'x',
+      },
     });
     const outsider = await prisma.user.create({
-      data: { email: `read-o-${stamp}@example.com`, name: 'ReadO', password: 'x' },
+      data: {
+        email: `read-o-${stamp}@example.com`,
+        name: 'ReadO',
+        password: 'x',
+      },
     });
     memberId = member.id;
     member2Id = member2.id;
     outsiderId = outsider.id;
 
-    const group = await prisma.group.create({ data: { name: 'Read Group', createdBy: memberId } });
+    const group = await prisma.group.create({
+      data: { name: 'Read Group', createdBy: memberId },
+    });
     groupId = group.id;
-    await prisma.groupMember.create({ data: { groupId, userId: memberId, role: 'OWNER' } });
-    await prisma.groupMember.create({ data: { groupId, userId: member2Id, role: 'MEMBER' } });
+    await prisma.groupMember.create({
+      data: { groupId, userId: memberId, role: 'OWNER' },
+    });
+    await prisma.groupMember.create({
+      data: { groupId, userId: member2Id, role: 'MEMBER' },
+    });
 
     const jwt = app.get(JwtService);
-    const secret = app.get(ConfigService).getOrThrow<string>('JWT_ACCESS_SECRET');
-    memberToken = await jwt.signAsync({ sub: memberId, email: member.email }, { secret, expiresIn: '5m' });
-    member2Token = await jwt.signAsync({ sub: member2Id, email: member2.email }, { secret, expiresIn: '5m' });
-    outsiderToken = await jwt.signAsync({ sub: outsiderId, email: outsider.email }, { secret, expiresIn: '5m' });
+    const secret = app
+      .get(ConfigService)
+      .getOrThrow<string>('JWT_ACCESS_SECRET');
+    memberToken = await jwt.signAsync(
+      { sub: memberId, email: member.email },
+      { secret, expiresIn: '5m' },
+    );
+    member2Token = await jwt.signAsync(
+      { sub: member2Id, email: member2.email },
+      { secret, expiresIn: '5m' },
+    );
+    outsiderToken = await jwt.signAsync(
+      { sub: outsiderId, email: outsider.email },
+      { secret, expiresIn: '5m' },
+    );
   });
 
   afterAll(async () => {
     await prisma.group.deleteMany({ where: { id: groupId } });
-    await prisma.user.deleteMany({ where: { id: { in: [memberId, member2Id, outsiderId] } } });
+    await prisma.user.deleteMany({
+      where: { id: { in: [memberId, member2Id, outsiderId] } },
+    });
     await app.close();
   });
 
@@ -86,7 +119,9 @@ describe('Read receipts (e2e)', () => {
       .get(`/groups/${groupId}`)
       .set('Authorization', `Bearer ${memberToken}`)
       .expect(200);
-    const me = detail.body.data.members.find((m: any) => m.user.id === memberId);
+    const me = detail.body.data.members.find(
+      (m: any) => m.user.id === memberId,
+    );
     expect(me.lastReadAt).toBeTruthy();
   });
 

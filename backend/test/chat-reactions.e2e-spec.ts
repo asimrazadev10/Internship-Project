@@ -38,7 +38,9 @@ describe('Message reactions (e2e)', () => {
   const url = () => `/groups/${groupId}/messages/${messageId}/reactions`;
 
   beforeAll(async () => {
-    const mod = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    const mod = await Test.createTestingModule({
+      imports: [AppModule],
+    }).compile();
     app = mod.createNestApplication();
     prisma = app.get(PrismaService);
     await app.init();
@@ -47,13 +49,25 @@ describe('Message reactions (e2e)', () => {
 
     const stamp = Date.now();
     const member = await prisma.user.create({
-      data: { email: `react-a-${stamp}@example.com`, name: 'ReactA', password: 'x' },
+      data: {
+        email: `react-a-${stamp}@example.com`,
+        name: 'ReactA',
+        password: 'x',
+      },
     });
     const member2 = await prisma.user.create({
-      data: { email: `react-b-${stamp}@example.com`, name: 'ReactB', password: 'x' },
+      data: {
+        email: `react-b-${stamp}@example.com`,
+        name: 'ReactB',
+        password: 'x',
+      },
     });
     const outsider = await prisma.user.create({
-      data: { email: `react-o-${stamp}@example.com`, name: 'ReactO', password: 'x' },
+      data: {
+        email: `react-o-${stamp}@example.com`,
+        name: 'ReactO',
+        password: 'x',
+      },
     });
     memberId = member.id;
     member2Id = member2.id;
@@ -63,24 +77,46 @@ describe('Message reactions (e2e)', () => {
       data: { name: 'Reaction Group', createdBy: memberId },
     });
     groupId = group.id;
-    await prisma.groupMember.create({ data: { groupId, userId: memberId, role: 'OWNER' } });
-    await prisma.groupMember.create({ data: { groupId, userId: member2Id, role: 'MEMBER' } });
+    await prisma.groupMember.create({
+      data: { groupId, userId: memberId, role: 'OWNER' },
+    });
+    await prisma.groupMember.create({
+      data: { groupId, userId: member2Id, role: 'MEMBER' },
+    });
 
     const message = await prisma.message.create({
-      data: { groupId, senderId: memberId, content: 'react to me', type: 'USER' },
+      data: {
+        groupId,
+        senderId: memberId,
+        content: 'react to me',
+        type: 'USER',
+      },
     });
     messageId = message.id;
 
     const jwt = app.get(JwtService);
-    const secret = app.get(ConfigService).getOrThrow<string>('JWT_ACCESS_SECRET');
-    memberToken = await jwt.signAsync({ sub: memberId, email: member.email }, { secret, expiresIn: '5m' });
-    member2Token = await jwt.signAsync({ sub: member2Id, email: member2.email }, { secret, expiresIn: '5m' });
-    outsiderToken = await jwt.signAsync({ sub: outsiderId, email: outsider.email }, { secret, expiresIn: '5m' });
+    const secret = app
+      .get(ConfigService)
+      .getOrThrow<string>('JWT_ACCESS_SECRET');
+    memberToken = await jwt.signAsync(
+      { sub: memberId, email: member.email },
+      { secret, expiresIn: '5m' },
+    );
+    member2Token = await jwt.signAsync(
+      { sub: member2Id, email: member2.email },
+      { secret, expiresIn: '5m' },
+    );
+    outsiderToken = await jwt.signAsync(
+      { sub: outsiderId, email: outsider.email },
+      { secret, expiresIn: '5m' },
+    );
   });
 
   afterAll(async () => {
     await prisma.group.deleteMany({ where: { id: groupId } });
-    await prisma.user.deleteMany({ where: { id: { in: [memberId, member2Id, outsiderId] } } });
+    await prisma.user.deleteMany({
+      where: { id: { in: [memberId, member2Id, outsiderId] } },
+    });
     await app.close();
   });
 
@@ -104,7 +140,9 @@ describe('Message reactions (e2e)', () => {
     const b = await connect(port, member2Token);
     await b.emitWithAck('join_group', { groupId });
 
-    const got = new Promise<any>((resolve) => b.once('reaction_updated', resolve));
+    const got = new Promise<any>((resolve) =>
+      b.once('reaction_updated', resolve),
+    );
     await request(server())
       .post(url())
       .set('Authorization', `Bearer ${memberToken}`)

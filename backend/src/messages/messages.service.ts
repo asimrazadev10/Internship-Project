@@ -72,7 +72,11 @@ export class MessagesService {
     userId: string,
     content: string,
   ) {
-    const existing = await this.assertOwnUserMessage(groupId, messageId, userId);
+    const existing = await this.assertOwnUserMessage(
+      groupId,
+      messageId,
+      userId,
+    );
     if (existing.deletedAt) {
       throw new ForbiddenException('This message has been deleted');
     }
@@ -81,7 +85,9 @@ export class MessagesService {
       data: { content, editedAt: new Date() },
       select: MESSAGE_SELECT,
     });
-    this.events.emit(MESSAGE_UPDATED, { message } satisfies MessageUpdatedPayload);
+    this.events.emit(MESSAGE_UPDATED, {
+      message,
+    } satisfies MessageUpdatedPayload);
     return message;
   }
 
@@ -93,7 +99,9 @@ export class MessagesService {
       data: { deletedAt: new Date(), content: '' },
       select: MESSAGE_SELECT,
     });
-    this.events.emit(MESSAGE_UPDATED, { message } satisfies MessageUpdatedPayload);
+    this.events.emit(MESSAGE_UPDATED, {
+      message,
+    } satisfies MessageUpdatedPayload);
     return message;
   }
 
@@ -129,7 +137,9 @@ export class MessagesService {
       select: MESSAGE_SELECT,
     });
     // Persist-then-broadcast: the row exists before anyone is told about it.
-    this.events.emit(MESSAGE_CREATED, { message } satisfies MessageCreatedPayload);
+    this.events.emit(MESSAGE_CREATED, {
+      message,
+    } satisfies MessageCreatedPayload);
     return message;
   }
 

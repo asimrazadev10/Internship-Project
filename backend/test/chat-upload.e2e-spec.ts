@@ -66,19 +66,33 @@ describe('File uploads (e2e)', () => {
     memberId = member.id;
     outsiderId = outsider.id;
 
-    const group = await prisma.group.create({ data: { name: 'Upload Group', createdBy: memberId } });
+    const group = await prisma.group.create({
+      data: { name: 'Upload Group', createdBy: memberId },
+    });
     groupId = group.id;
-    await prisma.groupMember.create({ data: { groupId, userId: memberId, role: 'OWNER' } });
+    await prisma.groupMember.create({
+      data: { groupId, userId: memberId, role: 'OWNER' },
+    });
 
     const jwt = app.get(JwtService);
-    const secret = app.get(ConfigService).getOrThrow<string>('JWT_ACCESS_SECRET');
-    memberToken = await jwt.signAsync({ sub: memberId, email: member.email }, { secret, expiresIn: '5m' });
-    outsiderToken = await jwt.signAsync({ sub: outsiderId, email: outsider.email }, { secret, expiresIn: '5m' });
+    const secret = app
+      .get(ConfigService)
+      .getOrThrow<string>('JWT_ACCESS_SECRET');
+    memberToken = await jwt.signAsync(
+      { sub: memberId, email: member.email },
+      { secret, expiresIn: '5m' },
+    );
+    outsiderToken = await jwt.signAsync(
+      { sub: outsiderId, email: outsider.email },
+      { secret, expiresIn: '5m' },
+    );
   });
 
   afterAll(async () => {
     await prisma.group.deleteMany({ where: { id: groupId } });
-    await prisma.user.deleteMany({ where: { id: { in: [memberId, outsiderId] } } });
+    await prisma.user.deleteMany({
+      where: { id: { in: [memberId, outsiderId] } },
+    });
     await app.close();
   });
 
@@ -102,7 +116,9 @@ describe('File uploads (e2e)', () => {
     expect(res.body.data.attachmentUrl).toContain('hello.png');
 
     // The row really exists with the attachment.
-    const row = await prisma.message.findUnique({ where: { id: res.body.data.id } });
+    const row = await prisma.message.findUnique({
+      where: { id: res.body.data.id },
+    });
     expect(row?.attachmentUrl).toBeTruthy();
   });
 

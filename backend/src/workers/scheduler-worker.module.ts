@@ -13,7 +13,10 @@ import { SummaryService } from '../summary/summary.service';
   imports: [
     AppConfigModule,
     PrismaModule,
-    BullModule.forRootAsync({ inject: [ConfigService], useFactory: bullConnectionFactory }),
+    BullModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: bullConnectionFactory,
+    }),
     BullModule.registerQueue({ name: SCHEDULER_QUEUE }),
     BullModule.registerFlowProducer({ name: SUMMARY_FLOW }),
   ],

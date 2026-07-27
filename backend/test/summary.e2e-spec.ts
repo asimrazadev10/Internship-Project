@@ -31,7 +31,11 @@ describe('POST /summaries/run (e2e)', () => {
 
     app = moduleFixture.createNestApplication();
     app.useGlobalPipes(
-      new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        transform: true,
+      }),
     );
     prisma = app.get(PrismaService);
     await app.init();
@@ -49,7 +53,10 @@ describe('POST /summaries/run (e2e)', () => {
   });
 
   it('enqueues a scheduler job for an authenticated user', async () => {
-    const register = await request(server()).post('/auth/register').send(user).expect(201);
+    const register = await request(server())
+      .post('/auth/register')
+      .send(user)
+      .expect(201);
     const accessToken = register.body.data.accessToken;
 
     const res = await request(server())

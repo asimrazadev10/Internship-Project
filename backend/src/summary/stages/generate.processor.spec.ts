@@ -32,20 +32,30 @@ describe('GenerateProcessor', () => {
         transcript: [{ sender: 'Ada', content: 'ship it' }],
       }),
     );
-    expect(ai.summarize).toHaveBeenCalledWith([{ sender: 'Ada', content: 'ship it' }]);
-    expect(res).toEqual({ skipped: false, groupId: 'g1', summaryText: 'digest' });
+    expect(ai.summarize).toHaveBeenCalledWith([
+      { sender: 'Ada', content: 'ship it' },
+    ]);
+    expect(res).toEqual({
+      skipped: false,
+      groupId: 'g1',
+      summaryText: 'digest',
+    });
   });
 
   it('passes a fetch (empty) skip up without calling the model', async () => {
     const { processor, ai } = make();
-    const res = await processor.process(jobWith({ skipped: true, reason: 'empty' }));
+    const res = await processor.process(
+      jobWith({ skipped: true, reason: 'empty' }),
+    );
     expect(ai.summarize).not.toHaveBeenCalled();
     expect(res).toEqual({ skipped: true, reason: 'empty' });
   });
 
   it('passes a fetch (exists) skip up too', async () => {
     const { processor } = make();
-    const res = await processor.process(jobWith({ skipped: true, reason: 'exists' }));
+    const res = await processor.process(
+      jobWith({ skipped: true, reason: 'exists' }),
+    );
     expect(res).toEqual({ skipped: true, reason: 'exists' });
   });
 
@@ -53,7 +63,11 @@ describe('GenerateProcessor', () => {
     const { processor, ai } = make();
     ai.summarize.mockResolvedValue('');
     const res = await processor.process(
-      jobWith({ skipped: false, groupId: 'g1', transcript: [{ sender: 'Ada', content: 'x' }] }),
+      jobWith({
+        skipped: false,
+        groupId: 'g1',
+        transcript: [{ sender: 'Ada', content: 'x' }],
+      }),
     );
     expect(res).toEqual({ skipped: true, reason: 'blank' });
   });

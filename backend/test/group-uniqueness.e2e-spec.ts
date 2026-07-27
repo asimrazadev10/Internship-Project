@@ -30,10 +30,18 @@ describe('Group name uniqueness (e2e)', () => {
     await app.init();
 
     const a = await prisma.user.create({
-      data: { email: `gu-a-${Date.now()}@example.com`, name: 'A', password: 'x' },
+      data: {
+        email: `gu-a-${Date.now()}@example.com`,
+        name: 'A',
+        password: 'x',
+      },
     });
     const b = await prisma.user.create({
-      data: { email: `gu-b-${Date.now()}@example.com`, name: 'B', password: 'x' },
+      data: {
+        email: `gu-b-${Date.now()}@example.com`,
+        name: 'B',
+        password: 'x',
+      },
     });
     ownerId = a.id;
     otherId = b.id;
@@ -49,9 +57,9 @@ describe('Group name uniqueness (e2e)', () => {
 
   it('rejects a second group with the same name from the same creator', async () => {
     await groups.create(ownerId, 'Duplicate Test');
-    await expect(groups.create(ownerId, 'Duplicate Test')).rejects.toBeInstanceOf(
-      ConflictException,
-    );
+    await expect(
+      groups.create(ownerId, 'Duplicate Test'),
+    ).rejects.toBeInstanceOf(ConflictException);
   });
 
   it('leaves no orphan group behind when the duplicate is rejected', async () => {
@@ -66,14 +74,16 @@ describe('Group name uniqueness (e2e)', () => {
   it('allows a DIFFERENT user to use the same group name', async () => {
     // Scoped to the creator, not global — the first person to claim a common word must not deny
     // it to everyone else.
-    await expect(groups.create(otherId, 'Duplicate Test')).resolves.toMatchObject(
-      { name: 'Duplicate Test', createdBy: otherId },
-    );
+    await expect(
+      groups.create(otherId, 'Duplicate Test'),
+    ).resolves.toMatchObject({ name: 'Duplicate Test', createdBy: otherId });
   });
 
   it('allows the same creator to use a different name', async () => {
-    await expect(groups.create(ownerId, 'Another Name')).resolves.toMatchObject({
-      name: 'Another Name',
-    });
+    await expect(groups.create(ownerId, 'Another Name')).resolves.toMatchObject(
+      {
+        name: 'Another Name',
+      },
+    );
   });
 });

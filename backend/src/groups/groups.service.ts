@@ -170,7 +170,10 @@ export class GroupsService {
    * Read receipt: stamp the caller's membership with "read up to now" and broadcast it. Membership
    * is already proven by GroupMemberGuard, so the composite key is guaranteed to exist.
    */
-  async markRead(userId: string, groupId: string): Promise<{ lastReadAt: Date }> {
+  async markRead(
+    userId: string,
+    groupId: string,
+  ): Promise<{ lastReadAt: Date }> {
     const lastReadAt = new Date();
     await this.prisma.groupMember.update({
       where: { groupId_userId: { groupId, userId } },

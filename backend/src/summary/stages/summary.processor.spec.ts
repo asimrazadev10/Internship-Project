@@ -1,13 +1,19 @@
 import { SummaryProcessor } from './summary.processor';
-import { JOB_FETCH, JOB_SAVE, JOB_GROUP_SUMMARY } from '../../queues/queue.constants';
+import {
+  JOB_FETCH,
+  JOB_SAVE,
+  JOB_GROUP_SUMMARY,
+} from '../../queues/queue.constants';
 import type { GenerateResult, PublishResult } from './stage.types';
 
 function make() {
   const messages = {
     hasSummarySince: jest.fn().mockResolvedValue(false),
-    findForSummary: jest.fn().mockResolvedValue([
-      { sender: { name: 'Ada' }, content: 'ship it', createdAt: new Date() },
-    ]),
+    findForSummary: jest
+      .fn()
+      .mockResolvedValue([
+        { sender: { name: 'Ada' }, content: 'ship it', createdAt: new Date() },
+      ]),
     persistAiSummary: jest.fn().mockResolvedValue({ id: 'm1', groupId: 'g1' }),
   };
   const processor = new SummaryProcessor(messages as never);
@@ -68,12 +74,17 @@ describe('SummaryProcessor · save-summary', () => {
       saveJob({ skipped: false, groupId: 'g1', summaryText: 'digest' }),
     );
     expect(messages.persistAiSummary).toHaveBeenCalledWith('g1', 'digest');
-    expect(res).toEqual({ skipped: false, message: { id: 'm1', groupId: 'g1' } });
+    expect(res).toEqual({
+      skipped: false,
+      message: { id: 'm1', groupId: 'g1' },
+    });
   });
 
   it('passes the skip up without persisting', async () => {
     const { processor, messages } = make();
-    const res = await processor.process(saveJob({ skipped: true, reason: 'empty' }));
+    const res = await processor.process(
+      saveJob({ skipped: true, reason: 'empty' }),
+    );
     expect(messages.persistAiSummary).not.toHaveBeenCalled();
     expect(res).toEqual({ skipped: true });
   });

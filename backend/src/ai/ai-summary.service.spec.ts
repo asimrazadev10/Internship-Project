@@ -2,7 +2,9 @@ import { ConfigService } from '@nestjs/config';
 
 // Mock the AI SDK so no network call happens.
 const generateTextMock = jest.fn();
-jest.mock('ai', () => ({ generateText: (...args: unknown[]) => generateTextMock(...args) }));
+jest.mock('ai', () => ({
+  generateText: (...args: unknown[]) => generateTextMock(...args),
+}));
 jest.mock('@ai-sdk/google', () => ({
   createGoogleGenerativeAI: () => (model: string) => ({ model }),
 }));

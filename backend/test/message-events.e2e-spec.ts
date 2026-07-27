@@ -19,7 +19,9 @@ describe('MessagesService events (e2e)', () => {
   let groupId: string;
 
   beforeAll(async () => {
-    const mod = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    const mod = await Test.createTestingModule({
+      imports: [AppModule],
+    }).compile();
     app = mod.createNestApplication();
     prisma = app.get(PrismaService);
     messages = app.get(MessagesService);
@@ -27,12 +29,20 @@ describe('MessagesService events (e2e)', () => {
     await app.init();
 
     const user = await prisma.user.create({
-      data: { email: `evt-${Date.now()}@example.com`, name: 'Evt', password: 'x' },
+      data: {
+        email: `evt-${Date.now()}@example.com`,
+        name: 'Evt',
+        password: 'x',
+      },
     });
     userId = user.id;
-    const group = await prisma.group.create({ data: { name: 'Evt Group', createdBy: userId } });
+    const group = await prisma.group.create({
+      data: { name: 'Evt Group', createdBy: userId },
+    });
     groupId = group.id;
-    await prisma.groupMember.create({ data: { groupId, userId, role: 'OWNER' } });
+    await prisma.groupMember.create({
+      data: { groupId, userId, role: 'OWNER' },
+    });
   });
 
   afterAll(async () => {
