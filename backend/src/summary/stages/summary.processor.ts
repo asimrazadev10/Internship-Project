@@ -3,7 +3,7 @@ import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 
 import { TRANSCRIPT_UNKNOWN_SENDER } from '../../ai/ai.constants';
-import { MessagesService } from '../../messages/messages.service';
+import { SummaryMessagesService } from '../../messages/summary-messages.service';
 import {
   SUMMARY_QUEUE,
   JOB_FETCH,
@@ -33,7 +33,7 @@ import type {
 export class SummaryProcessor extends WorkerHost {
   private readonly logger = new Logger(SummaryProcessor.name);
 
-  constructor(private readonly messages: MessagesService) {
+  constructor(private readonly messages: SummaryMessagesService) {
     super();
   }
 

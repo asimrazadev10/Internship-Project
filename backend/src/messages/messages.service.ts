@@ -10,6 +10,7 @@ import { PaginationMeta } from '../common/http/api-response';
 import { decodeCursor, encodeCursor } from '../common/utils/cursor';
 import { PrismaService } from '../prisma/prisma.service';
 import { SEARCH_RESULT_LIMIT } from './message.constants';
+import { MESSAGE_SELECT } from './message.select';
 import {
   MESSAGE_CREATED,
   MESSAGE_UPDATED,
@@ -18,28 +19,14 @@ import {
 } from './message-events';
 
 /**
- * Message reads and writes. Membership authorization is enforced by GroupMemberGuard at the
- * controller, so this service assumes the caller is allowed to touch this group.
+ * Message reads and writes for the INTERACTIVE path — everything a connected user does.
+ * Membership authorization is enforced by GroupMemberGuard at the controller, so this service
+ * assumes the caller is allowed to touch this group.
+ *
+ * The AI summary pipeline's queries live in SummaryMessagesService instead: they are called only
+ * from the standalone worker, and keeping them here forced that worker to depend on EventEmitter2
+ * it never used. Every write in THIS class emits; nothing in the other one does.
  */
-
-// Shape returned to clients: never `include: { sender: true }`, which would leak the sender's
-// password hash. Sender is null for SYSTEM / AI_SUMMARY messages.
-const MESSAGE_SELECT = {
-  id: true,
-  groupId: true,
-  content: true,
-  type: true,
-  createdAt: true,
-  editedAt: true,
-  deletedAt: true,
-  senderId: true,
-  sender: { select: { id: true, name: true } },
-  reactions: { select: { emoji: true, userId: true } },
-  attachmentUrl: true,
-  attachmentName: true,
-  attachmentMime: true,
-} as const;
-
 @Injectable()
 export class MessagesService {
   constructor(
@@ -127,19 +114,6 @@ export class MessagesService {
     return existing;
   }
 
-  /**
-   * AI daily summary: persist a message with no human sender, WITHOUT broadcasting. In the
-   * distributed pipeline the broadcast is a separate stage (publish-summary) running in another
-   * process over the Redis emitter, so this write must not emit the in-process MESSAGE_CREATED
-   * event — no gateway lives in the worker to receive it, and double-broadcasting is avoided.
-   */
-  async persistAiSummary(groupId: string, content: string) {
-    return this.prisma.message.create({
-      data: { groupId, senderId: null, content, type: MessageType.AI_SUMMARY },
-      select: MESSAGE_SELECT,
-    });
-  }
-
   /** Single write+emit point so USER and AI_SUMMARY messages both broadcast identically. */
   private async persistAndEmit(data: {
     groupId: string;
@@ -159,20 +133,6 @@ export class MessagesService {
     return message;
   }
 
-  /** The window's USER messages (oldest first) that a summary is built from. */
-  findForSummary(groupId: string, since: Date) {
-    return this.prisma.message.findMany({
-      where: {
-        groupId,
-        type: MessageType.USER,
-        createdAt: { gte: since },
-        deletedAt: null,
-      },
-      orderBy: { createdAt: 'asc' },
-      select: { content: true, createdAt: true, sender: { select: { name: true } } },
-    });
-  }
-
   /**
    * Search a group's USER messages by content (case-insensitive substring), newest first, capped.
    * Deleted messages are excluded. A substring match keeps it simple and dependency-free; a Postgres
@@ -190,14 +150,6 @@ export class MessagesService {
       take: SEARCH_RESULT_LIMIT,
       select: MESSAGE_SELECT,
     });
-  }
-
-  /** Idempotency guard: has an AI_SUMMARY already been posted for this group in the window? */
-  async hasSummarySince(groupId: string, since: Date): Promise<boolean> {
-    const count = await this.prisma.message.count({
-      where: { groupId, type: MessageType.AI_SUMMARY, createdAt: { gte: since } },
-    });
-    return count > 0;
   }
 
   /**
