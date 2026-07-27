@@ -26,11 +26,7 @@ import { StorageService, type UploadedFileLike } from '../storage/storage.servic
 import { CreateMessageDto } from './dto/create-message.dto';
 import { SearchMessagesDto } from './dto/search-messages.dto';
 import { MessagesService } from './messages.service';
-
-// 5 MB cap and an allow-list of image/PDF mime types — enforced by ParseFilePipe before the
-// handler runs, so oversized or unexpected files never reach storage.
-const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
-const ALLOWED_MIME = /^(image\/(png|jpe?g|gif|webp)|application\/pdf)$/;
+import { ALLOWED_UPLOAD_MIME, MAX_UPLOAD_BYTES } from './upload.constants';
 
 /**
  * Nested under a group: every route is group-scoped, so GroupMemberGuard applies to the whole
@@ -97,7 +93,7 @@ export class MessagesController {
           // Jest's VM can't dynamically import the ESM `file-type` package — by matching the
           // declared MIME against the same allow-list.
           new FileTypeValidator({
-            fileType: ALLOWED_MIME,
+            fileType: ALLOWED_UPLOAD_MIME,
             fallbackToMimetype: true,
           }),
         ],

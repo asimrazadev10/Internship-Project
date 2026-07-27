@@ -2,13 +2,15 @@
 
 import { useRef, useState } from "react";
 
-import { MESSAGE_MAX_LENGTH } from "@/lib/api-limits";
+import {
+  MAX_UPLOAD_MB,
+  MESSAGE_MAX_LENGTH,
+  UPLOAD_ACCEPT,
+} from "@/lib/api-limits";
 import { uploadFile } from "@/lib/api/messages";
 import { getApiErrorMessage } from "@/lib/api/error";
 import { useSocket } from "@/lib/socket/socket-provider";
 import { CLIENT_EVENTS, type SendMessageAck } from "@/lib/socket/socket-events";
-
-const ACCEPT = "image/png,image/jpeg,image/gif,image/webp,application/pdf";
 
 /**
  * Message input. Enter sends; Shift+Enter newlines. The length cap comes from api-limits, which
@@ -89,7 +91,7 @@ export function MessageComposer({
         <input
           ref={fileRef}
           type="file"
-          accept={ACCEPT}
+          accept={UPLOAD_ACCEPT}
           onChange={onPickFile}
           className="hidden"
         />
@@ -97,7 +99,7 @@ export function MessageComposer({
           type="button"
           onClick={() => fileRef.current?.click()}
           disabled={uploading}
-          title="Attach a file (image or PDF, up to 5 MB)"
+          title={`Attach a file (image or PDF, up to ${MAX_UPLOAD_MB} MB)`}
           aria-label="Attach a file"
           className="shrink-0 rounded-xl px-2.5 py-2 text-lg text-muted transition hover:bg-surface-2 hover:text-ink disabled:cursor-not-allowed disabled:opacity-60"
         >
