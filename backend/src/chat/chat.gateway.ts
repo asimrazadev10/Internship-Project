@@ -14,7 +14,6 @@ import {
 } from '@nestjs/websockets';
 import { Server } from 'socket.io';
 
-import { JwtPayload } from '../auth/interfaces/auth.types';
 import { NOT_A_MEMBER_MESSAGE } from '../common/error-messages';
 import { MEMBER_JOINED, READ_MARKED } from '../groups/group-events';
 import type {
@@ -40,25 +39,28 @@ import {
   groupIdFromRoom,
   roomFor,
 } from './chat.constants';
+import { PresenceService } from './presence.service';
+import { createWsAuthMiddleware } from './ws-auth.middleware';
 import type { AuthData, AuthedSocket } from './ws.types';
 
 /**
- * Real-time chat gateway. Authenticates the handshake JWT and (later tasks) manages one room
- * per group and broadcasts new messages. CORS is set because the browser connects directly to
- * this server (WebSockets don't traverse the Next proxy). CORS itself is sourced from validated
- * config in RedisIoAdapter (see redis-io.adapter.ts), not here — the decorator below evaluates at
- * import time, before ConfigModule has loaded .env, so a value set here would be stale.
+ * Real-time chat gateway: the socket API's INBOUND half (@SubscribeMessage handlers) plus the
+ * single outbound broadcast point (@OnEvent handlers at the bottom).
  *
- * Auth runs as Socket.IO handshake middleware (registered in `afterInit`), NOT inside
- * `handleConnection`. Socket.IO's namespace sends the CONNECT ack to the client (which fires the
- * client's `connect` event) BEFORE it emits the internal `connection` event that triggers
- * `handleConnection` (see socket.io `Namespace._doConnect`: `socket._onconnect()` runs, THEN
- * `emitReserved('connection', socket)`). So calling `socket.disconnect()` from `handleConnection`
- * always arrives too late — the client already saw `connect` and would only later see a
- * `disconnect`, never `connect_error`. Handshake middleware runs earlier, in `Namespace._run`,
- * strictly before that ack is sent: calling `next(err)` there makes Socket.IO send a
- * CONNECT_ERROR packet instead, which is what surfaces as `connect_error` on the client and
- * guarantees an unauthenticated socket never completes the connection at all.
+ * CORS is set because the browser connects directly to this server (WebSockets don't traverse the
+ * Next proxy). CORS itself is sourced from validated config in RedisIoAdapter (see
+ * redis-io.adapter.ts), not here — the decorator below evaluates at import time, before
+ * ConfigModule has loaded .env, so a value set here would be stale.
+ *
+ * Two concerns live in their own files because each carries an argument worth reading on its own:
+ *   ws-auth.middleware.ts — WHY handshake middleware and not handleConnection (a Socket.IO
+ *                           lifecycle detail that is easy to get wrong and silent when wrong)
+ *   presence.service.ts   — WHY fetchSockets and not a local Map (multi-node correctness)
+ *
+ * The @OnEvent broadcast handlers deliberately STAY here. Each is a single
+ * `server.to(room).emit(...)` line, and the Server they need is owned by this class via
+ * @WebSocketServer(). Moving them out would mean binding the Server into another provider at
+ * startup — real indirection bought for no reduction in complexity.
  */
 @WebSocketGateway()
 export class ChatGateway
@@ -73,25 +75,11 @@ export class ChatGateway
     private readonly config: ConfigService,
     private readonly groups: GroupsService,
     private readonly messages: MessagesService,
+    private readonly presence: PresenceService,
   ) {}
 
   afterInit(server: Server): void {
-    server.use((socket: AuthedSocket, next: (err?: Error) => void) => {
-      this.authenticate(socket)
-        .then(() => next())
-        .catch((err: Error) => next(err));
-    });
-  }
-
-  private async authenticate(socket: AuthedSocket): Promise<void> {
-    const token = socket.handshake.auth?.token as string | undefined;
-    if (!token) {
-      throw new Error('Unauthorized: missing token');
-    }
-    const payload = await this.jwt.verifyAsync<JwtPayload>(token, {
-      secret: this.config.getOrThrow<string>('JWT_ACCESS_SECRET'),
-    });
-    socket.data = { userId: payload.sub, email: payload.email };
+    server.use(createWsAuthMiddleware(this.jwt, this.config));
   }
 
   handleConnection(socket: AuthedSocket): void {
@@ -106,7 +94,7 @@ export class ChatGateway
       for (const room of socket.rooms) {
         const groupId = groupIdFromRoom(room);
         if (groupId) {
-          void this.broadcastPresence(groupId, socket.id);
+          void this.presence.broadcast(this.server, groupId, socket.id);
         }
       }
     });
@@ -136,7 +124,7 @@ export class ChatGateway
       this.logger.debug(
         `socket ${socket.id} (user ${userId}) joined ${roomFor(groupId)}`,
       );
-      await this.broadcastPresence(groupId);
+      await this.presence.broadcast(this.server, groupId);
       return { ok: true };
     } catch (err) {
       if (err instanceof ForbiddenException) {
@@ -158,7 +146,7 @@ export class ChatGateway
     if (body?.groupId) {
       await socket.leave(roomFor(body.groupId));
       this.logger.debug(`socket ${socket.id} left ${roomFor(body.groupId)}`);
-      await this.broadcastPresence(body.groupId);
+      await this.presence.broadcast(this.server, body.groupId);
     }
     return { ok: true };
   }
@@ -195,27 +183,6 @@ export class ChatGateway
     socket
       .to(roomFor(groupId))
       .emit(SERVER_EVENTS.USER_TYPING, { groupId, userId, typing });
-  }
-
-  /**
-   * Presence: the distinct users with at least one socket in the group's room. Uses the adapter's
-   * fetchSockets(), which spans nodes under the Redis adapter, so the count is correct multi-node.
-   */
-  private async broadcastPresence(
-    groupId: string,
-    excludeSocketId?: string,
-  ): Promise<void> {
-    const room = roomFor(groupId);
-    const sockets = await this.server.in(room).fetchSockets();
-    const userIds = [
-      ...new Set(
-        sockets
-          .filter((s) => s.id !== excludeSocketId)
-          .map((s) => (s.data as AuthData)?.userId)
-          .filter((id): id is string => Boolean(id)),
-      ),
-    ];
-    this.server.to(room).emit(SERVER_EVENTS.PRESENCE, { groupId, userIds });
   }
 
   /**
