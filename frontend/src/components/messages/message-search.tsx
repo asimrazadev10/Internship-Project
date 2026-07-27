@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 
 import { NoMatchesMark } from "@/components/ui/illustrations";
+import { META_CLASS } from "@/components/ui/styles";
 import { SEARCH_MAX_QUERY_LENGTH } from "@/lib/api-limits";
 import { useSearchMessages } from "@/lib/queries/messages";
 
@@ -70,7 +71,7 @@ export function MessageSearch({ groupId }: { groupId: string }) {
             <ul className="flex flex-col">
               {results.map((m) => (
                 <li key={m.id} className="rounded-lg px-3 py-2 hover:bg-surface-2">
-                  <div className="flex items-baseline justify-between gap-2 font-mono text-[11px] text-muted">
+                  <div className={`${META_CLASS} flex items-baseline justify-between gap-2`}>
                     <span className="uppercase tracking-wide">
                       {m.sender?.name ?? "Someone"}
                     </span>

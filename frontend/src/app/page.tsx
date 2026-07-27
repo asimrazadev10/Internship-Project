@@ -4,6 +4,7 @@ import { AppHeader } from "@/components/app-header";
 import { CreateGroupForm } from "@/components/groups/create-group-form";
 import { GroupList } from "@/components/groups/group-list";
 import { JoinGroupForm } from "@/components/groups/join-group-form";
+import { EYEBROW_CLASS } from "@/components/ui/styles";
 import { useAuth } from "@/lib/auth/auth-context";
 import { useRequireAuth } from "@/lib/auth/use-require-auth";
 
@@ -27,7 +28,7 @@ export default function HomePage() {
       <AppHeader />
       <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-10 px-4 py-10">
         <div>
-          <p className="font-mono text-xs uppercase tracking-wide text-muted">
+          <p className={EYEBROW_CLASS}>
             Your rooms
           </p>
           <h1 className="mt-1 font-display text-3xl font-extrabold tracking-tight">
@@ -36,7 +37,7 @@ export default function HomePage() {
         </div>
 
         <section className="flex flex-col gap-3 rounded-2xl border border-line bg-surface-2/60 p-5">
-          <h2 className="font-mono text-xs uppercase tracking-wide text-muted">
+          <h2 className={EYEBROW_CLASS}>
             Start or join a group
           </h2>
           <CreateGroupForm />
@@ -44,7 +45,7 @@ export default function HomePage() {
         </section>
 
         <section className="flex flex-col gap-3">
-          <h2 className="font-mono text-xs uppercase tracking-wide text-muted">
+          <h2 className={EYEBROW_CLASS}>
             Your groups
           </h2>
           <GroupList />

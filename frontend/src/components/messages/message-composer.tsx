@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 
+import { PRIMARY_BUTTON_CLASS } from "@/components/ui/styles";
 import {
   MAX_UPLOAD_MB,
   MESSAGE_MAX_LENGTH,
@@ -126,7 +127,8 @@ export function MessageComposer({
         <button
           type="submit"
           disabled={sending || !connected || !content.trim()}
-          className="shrink-0 rounded-xl bg-brand px-4 py-2 text-sm font-semibold text-on-brand transition hover:bg-brand-strong disabled:cursor-not-allowed disabled:opacity-60"
+          // py-2, not py-2.5: matches the attach button beside it in this items-end row.
+          className={`${PRIMARY_BUTTON_CLASS} shrink-0 px-4 py-2`}
         >
           Send
         </button>

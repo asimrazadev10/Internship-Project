@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import { INPUT_CLASS } from "@/components/ui/styles";
 import { getApiErrorMessage } from "@/lib/api/error";
 import { useJoinGroup } from "@/lib/queries/groups";
 
@@ -30,7 +31,7 @@ export function JoinGroupForm() {
           value={groupId}
           onChange={(e) => setGroupId(e.target.value)}
           disabled={joinGroup.isPending}
-          className="flex-1 rounded-xl border border-line bg-surface px-3.5 py-2.5 font-mono text-sm outline-none transition placeholder:font-sans placeholder:text-muted/70 focus:border-brand focus:ring-2 focus:ring-brand/25 disabled:opacity-60"
+          className={`${INPUT_CLASS} flex-1 font-mono placeholder:font-sans`}
         />
         <button
           type="submit"

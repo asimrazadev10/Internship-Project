@@ -1,6 +1,14 @@
-import { AuroraRibbons } from "@/components/ui/aurora-ribbons";
+import { AURORA_VIEWBOX, AuroraRibbons } from "@/components/ui/aurora-ribbons";
 import { Avatar } from "@/components/ui/avatar";
 import { Logo } from "@/components/ui/logo";
+import {
+  BUBBLE_CLASS,
+  BUBBLE_OTHER,
+  BUBBLE_OWN,
+  BUBBLE_ROW_CLASS,
+  META_CLASS,
+} from "@/components/ui/styles";
+import { SITE_TAGLINE } from "@/lib/brand.constants";
 
 /**
  * The signature. An auth page's job is to invite you in — so it opens with the most
@@ -38,7 +46,7 @@ export function AuthHero() {
       */}
       <svg
         aria-hidden
-        viewBox="0 0 200 140"
+        viewBox={AURORA_VIEWBOX}
         preserveAspectRatio="xMidYMid slice"
         className="pointer-events-none absolute inset-0 h-full w-full opacity-45"
       >
@@ -52,28 +60,24 @@ export function AuthHero() {
 
       <div className="relative flex flex-col gap-7">
         <h1 className="max-w-md font-display text-4xl font-extrabold leading-[1.1] tracking-tight text-ink">
-          Where your group actually talks.
+          {SITE_TAGLINE}
         </h1>
 
         <div className="flex flex-col gap-2.5">
           {SAMPLE.map((m, i) => (
             <div
               key={i}
-              className={`flex items-end gap-2.5 ${m.own ? "flex-row-reverse" : ""}`}
+              className={`${BUBBLE_ROW_CLASS} ${m.own ? "flex-row-reverse" : ""}`}
             >
               {!m.own && <Avatar name={m.name} size={32} />}
               <div
                 className={`flex max-w-xs flex-col gap-0.5 ${m.own ? "items-end" : "items-start"}`}
               >
-                <span className="px-1 font-mono text-[11px] uppercase tracking-wide text-muted">
+                <span className={`${META_CLASS} px-1 uppercase tracking-wide`}>
                   {m.name}
                 </span>
                 <span
-                  className={`rounded-2xl px-3.5 py-2 text-sm shadow-sm ${
-                    m.own
-                      ? "rounded-br-md bg-brand text-on-brand"
-                      : "rounded-bl-md bg-surface text-ink"
-                  }`}
+                  className={`${BUBBLE_CLASS} ${m.own ? BUBBLE_OWN : BUBBLE_OTHER}`}
                 >
                   {m.text}
                 </span>

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import { INPUT_CLASS, PRIMARY_BUTTON_CLASS } from "@/components/ui/styles";
 import { getApiErrorMessage } from "@/lib/api/error";
 import { useCreateGroup } from "@/lib/queries/groups";
 
@@ -28,12 +29,12 @@ export function CreateGroupForm() {
           value={name}
           onChange={(e) => setName(e.target.value)}
           disabled={createGroup.isPending}
-          className="flex-1 rounded-xl border border-line bg-surface px-3.5 py-2.5 text-sm outline-none transition placeholder:text-muted/70 focus:border-brand focus:ring-2 focus:ring-brand/25 disabled:opacity-60"
+          className={`${INPUT_CLASS} flex-1`}
         />
         <button
           type="submit"
           disabled={createGroup.isPending || !name.trim()}
-          className="shrink-0 rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-on-brand transition hover:bg-brand-strong disabled:cursor-not-allowed disabled:opacity-60"
+          className={`${PRIMARY_BUTTON_CLASS} shrink-0 px-4 py-2.5`}
         >
           {createGroup.isPending ? "Creating…" : "Create"}
         </button>

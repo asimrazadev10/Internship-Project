@@ -5,6 +5,14 @@ import { useEffect, useRef, useState } from "react";
 import { Avatar } from "@/components/ui/avatar";
 import { EmptyState } from "@/components/ui/empty-state";
 import { EmptyMessages } from "@/components/ui/illustrations";
+import {
+  BUBBLE_CLASS,
+  BUBBLE_OTHER,
+  BUBBLE_OWN,
+  BUBBLE_ROW_CLASS,
+  EYEBROW_CLASS,
+  META_CLASS,
+} from "@/components/ui/styles";
 import { markRead } from "@/lib/api/groups";
 import { deleteMessage, editMessage, toggleReaction } from "@/lib/api/messages";
 import { getApiErrorMessage } from "@/lib/api/error";
@@ -165,7 +173,7 @@ function MessageRow({
 
   return (
     <li
-      className={`group flex items-end gap-2.5 ${isOwn ? "flex-row-reverse" : ""}`}
+      className={`group ${BUBBLE_ROW_CLASS} ${isOwn ? "flex-row-reverse" : ""}`}
       onMouseLeave={() => {
         setShowPalette(false);
         setConfirming(false);
@@ -173,7 +181,7 @@ function MessageRow({
     >
       {!isOwn && <Avatar name={senderName} id={message.senderId} size={30} />}
       <div className={`flex max-w-[78%] flex-col gap-0.5 ${isOwn ? "items-end" : "items-start"}`}>
-        <div className="flex items-baseline gap-2 px-1 font-mono text-[11px] text-muted">
+        <div className={`${META_CLASS} flex items-baseline gap-2 px-1`}>
           {!isOwn && <span className="uppercase tracking-wide">{senderName}</span>}
           <span>{formatTime(message.createdAt)}</span>
           {message.editedAt && <span>· edited</span>}
@@ -214,8 +222,8 @@ function MessageRow({
         ) : (
           <div className="relative">
             <div
-              className={`flex flex-col gap-2 rounded-2xl px-3.5 py-2 text-sm shadow-sm ${
-                isOwn ? "rounded-br-md bg-brand text-on-brand" : "rounded-bl-md bg-surface text-ink"
+              className={`${BUBBLE_CLASS} flex flex-col gap-2 ${
+                isOwn ? BUBBLE_OWN : BUBBLE_OTHER
               }`}
             >
               {message.attachmentUrl && (
@@ -411,7 +419,7 @@ export function MessageList({
           <button
             onClick={() => void loadOlder()}
             disabled={isLoadingOlder}
-            className="mx-auto rounded-full border border-line px-3 py-1 font-mono text-xs uppercase tracking-wide text-muted transition hover:border-line-strong hover:text-ink disabled:opacity-60"
+            className={`${EYEBROW_CLASS} mx-auto rounded-full border border-line px-3 py-1 transition hover:border-line-strong hover:text-ink disabled:opacity-60`}
           >
             {isLoadingOlder ? "Loading…" : "Load older"}
           </button>

@@ -9,6 +9,7 @@ import { MessageComposer } from "@/components/messages/message-composer";
 import { MessageList } from "@/components/messages/message-list";
 import { MessageSearch } from "@/components/messages/message-search";
 import { Avatar } from "@/components/ui/avatar";
+import { EYEBROW_CLASS } from "@/components/ui/styles";
 import { getApiErrorMessage } from "@/lib/api/error";
 import { useRequireAuth } from "@/lib/auth/use-require-auth";
 import { useGroup } from "@/lib/queries/groups";
@@ -69,7 +70,7 @@ export default function GroupPage() {
         <div className="flex flex-col gap-3 py-4">
           <Link
             href="/"
-            className="w-fit font-mono text-xs uppercase tracking-wide text-muted transition hover:text-ink"
+            className={`${EYEBROW_CLASS} w-fit transition hover:text-ink`}
           >
             ← All groups
           </Link>
@@ -115,7 +116,7 @@ export default function GroupPage() {
               <button
                 onClick={copyId}
                 title="Copy the invite id — share it so others can join"
-                className="rounded-full border border-line px-3 py-1.5 font-mono text-xs uppercase tracking-wide text-muted transition hover:border-line-strong hover:text-ink"
+                className={`${EYEBROW_CLASS} rounded-full border border-line px-3 py-1.5 transition hover:border-line-strong hover:text-ink`}
               >
                 {copied ? "Copied ✓" : "Copy invite id"}
               </button>
