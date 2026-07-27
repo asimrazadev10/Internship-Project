@@ -36,7 +36,7 @@ export class UsersService {
   /**
    * Create a user. Uniqueness of `email` is enforced by the database constraint, not a
    * pre-check here: the constraint is the only atomic guarantee, and a duplicate surfaces as
-   * P2002 which the global PrismaExceptionFilter maps to 409. A findByEmail-then-create would
+   * P2002 which the global AllExceptionsFilter maps to 409. A findByEmail-then-create would
    * be both racy and a duplication of a rule the schema already states.
    */
   create(data: Prisma.UserCreateInput): Promise<User> {

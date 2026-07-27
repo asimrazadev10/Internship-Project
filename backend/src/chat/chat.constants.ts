@@ -15,7 +15,7 @@
  * one-file diff in the mirror, instead of a grep across two codebases.
  *
  * Note the project already accepts this argument for its IN-PROCESS EventEmitter2 names
- * (group-events.ts, message-events.ts, reaction-events.ts). These are the ones that actually
+ * (group-events.ts, message-events.ts). These are the ones that actually
  * cross a process boundary.
  */
 

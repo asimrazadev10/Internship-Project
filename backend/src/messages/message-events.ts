@@ -30,3 +30,18 @@ export interface MessageCreatedPayload {
 export interface MessageUpdatedPayload {
   message: BroadcastMessage;
 }
+
+/** Emitted after a message's reactions change, so the gateway can broadcast the new set. */
+export const REACTION_CHANGED = 'reaction.changed';
+
+/**
+ * Lives here rather than in its own file: it is the same kind of thing as the two events above —
+ * an in-process EventEmitter2 name plus its payload, emitted by the messages module and consumed
+ * by ChatGateway. Splitting it out made ChatGateway open this module with four import statements
+ * over seven lines. Note `reactions` is the same shape as BroadcastMessage.reactions.
+ */
+export interface ReactionChangedPayload {
+  groupId: string;
+  messageId: string;
+  reactions: { emoji: string; userId: string }[];
+}

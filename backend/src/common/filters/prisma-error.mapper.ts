@@ -12,10 +12,9 @@ export interface MappedPrismaError {
 /**
  * Translates Prisma's database-level error codes into HTTP semantics.
  *
- * Kept as a pure function rather than living inside the filter so that both
- * PrismaExceptionFilter and AllExceptionsFilter can produce identical output. That makes the
- * result independent of the order Nest happens to resolve global filters in — a detail that
- * is easy to get wrong and hard to notice when it is wrong.
+ * Kept as a pure function rather than living inside AllExceptionsFilter so the mapping stays
+ * independently unit-testable, and so any future consumer (a worker, a different transport) can
+ * reuse it without dragging in an HTTP filter.
  *
  * Prisma error code reference: https://www.prisma.io/docs/orm/reference/error-reference
  */

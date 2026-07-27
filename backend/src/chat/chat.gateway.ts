@@ -22,13 +22,16 @@ import type {
   ReadMarkedPayload,
 } from '../groups/group-events';
 import { GroupsService } from '../groups/groups.service';
-import { MESSAGE_CREATED, MESSAGE_UPDATED } from '../messages/message-events';
+import {
+  MESSAGE_CREATED,
+  MESSAGE_UPDATED,
+  REACTION_CHANGED,
+} from '../messages/message-events';
 import type {
   MessageCreatedPayload,
   MessageUpdatedPayload,
+  ReactionChangedPayload,
 } from '../messages/message-events';
-import { REACTION_CHANGED } from '../messages/reaction-events';
-import type { ReactionChangedPayload } from '../messages/reaction-events';
 import { MESSAGE_CONTENT_MAX_LENGTH } from '../messages/message.constants';
 import { MessagesService } from '../messages/messages.service';
 import {

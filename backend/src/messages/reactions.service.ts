@@ -2,7 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 
 import { PrismaService } from '../prisma/prisma.service';
-import { REACTION_CHANGED, ReactionChangedPayload } from './reaction-events';
+import { REACTION_CHANGED, ReactionChangedPayload } from './message-events';
 
 /**
  * Message reactions. Membership on the group is already proven by GroupMemberGuard; this service

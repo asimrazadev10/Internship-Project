@@ -16,9 +16,15 @@ import { mapPrismaError } from './prisma-error.mapper';
  * Catch-all filter. Guarantees that nothing escapes the API in a shape a client has not seen
  * before — including errors thrown from places no one anticipated.
  *
- * Note this also handles Prisma errors, duplicating PrismaExceptionFilter's behaviour via the
- * same shared mapper. That is deliberate: it makes correctness independent of the order Nest
- * resolves global filters in, so whichever one wins produces byte-identical output.
+ * This is the ONLY global filter. A separate PrismaExceptionFilter used to sit beside it, mapping
+ * Prisma errors through the same shared mapper to byte-identical output — which meant carrying a
+ * comment explaining that their relative precedence did not matter. Deleting it removes the
+ * ordering question rather than arguing it. `@Catch()` with no argument catches everything,
+ * Prisma included, so nothing is left uncovered.
+ *
+ * The one thing worth preserving from that filter was its log line, which named the Prisma error
+ * code (P2002, P2025). That detail is folded into the warn below — without it, a 409 in the log
+ * no longer tells you WHICH constraint tripped.
  */
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
@@ -39,8 +45,14 @@ export class AllExceptionsFilter implements ExceptionFilter {
         exception instanceof Error ? exception.stack : String(exception),
       );
     } else {
+      // Name the Prisma code when there is one — a bare "409 CONFLICT" does not say which
+      // constraint tripped, and that is usually the whole question.
+      const prismaCode =
+        exception instanceof Prisma.PrismaClientKnownRequestError
+          ? ` (Prisma ${exception.code})`
+          : '';
       this.logger.warn(
-        `${request.method} ${request.url} -> ${status} ${body.error.code}`,
+        `${request.method} ${request.url} -> ${status} ${body.error.code}${prismaCode}`,
       );
     }
 
