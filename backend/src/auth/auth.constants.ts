@@ -1,0 +1,53 @@
+/**
+ * Credential-shape policy and refresh-token cryptography parameters.
+ *
+ * Two groups of values, both previously written as bare literals at their use sites.
+ *
+ * The LENGTH bounds are duplicated across a boundary by necessity: RegisterDto and LoginDto must
+ * agree with each other (a password that registers must be able to log in), and the browser form
+ * enforces the same rules a second time so the user is not told "invalid" only after a round trip.
+ * The frontend copy lives in frontend/src/lib/api-limits.ts and names this file as its source.
+ *
+ * The CRYPTO parameters are not tuning knobs — each encodes a security decision that is argued in
+ * TokenService's doc comment. Naming them puts the decision and the number in the same place.
+ */
+
+// ---- Credential shape ----
+
+/** RFC 5321 maximum length of an email address. */
+export const EMAIL_MAX_LENGTH = 254;
+
+/** Minimum password length. Enforced at registration only — see LoginDto for why not at login. */
+export const PASSWORD_MIN_LENGTH = 8;
+
+/**
+ * Upper bound on password length. argon2 has no 72-byte truncation issue (unlike bcrypt), but a
+ * cap still stops a multi-megabyte body being fed into the hash function as a cheap DoS.
+ */
+export const PASSWORD_MAX_LENGTH = 128;
+
+export const NAME_MIN_LENGTH = 1;
+export const NAME_MAX_LENGTH = 80;
+
+// ---- Refresh-token cryptography ----
+
+/**
+ * Entropy of an opaque refresh token: 48 random bytes → ~64 base64url characters.
+ *
+ * This size is what makes the SHA-256 choice below safe. Change it downward and the reasoning
+ * behind the hash algorithm silently stops holding.
+ */
+export const REFRESH_TOKEN_BYTES = 48;
+
+/** URL-safe encoding, so the token can travel in a body or header without escaping. */
+export const REFRESH_TOKEN_ENCODING = 'base64url' as const;
+
+/**
+ * SHA-256, deliberately NOT a slow/memory-hard hash.
+ *
+ * The token is already CSPRNG output of REFRESH_TOKEN_BYTES, so there is no low-entropy secret to
+ * brute-force — argon2 here would only add latency to every refresh. Hashing exists solely so a
+ * leaked database table contains no usable tokens. (Contrast PasswordService, where the input IS
+ * low-entropy and argon2id is therefore correct.)
+ */
+export const REFRESH_TOKEN_HASH_ALGORITHM = 'sha256' as const;

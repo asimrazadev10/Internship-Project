@@ -6,6 +6,11 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 
 import { parseDurationToMs } from '../common/utils/duration';
 import { PrismaService } from '../prisma/prisma.service';
+import {
+  REFRESH_TOKEN_BYTES,
+  REFRESH_TOKEN_ENCODING,
+  REFRESH_TOKEN_HASH_ALGORITHM,
+} from './auth.constants';
 import { AuthTokens, JwtPayload } from './interfaces/auth.types';
 
 /**
@@ -174,9 +179,9 @@ export class TokenService {
     });
   }
 
-  /** 48 random bytes → ~64 base64url chars. Opaque; the DB row carries the identity. */
+  /** Opaque CSPRNG output; the DB row carries the identity. Size/encoding: auth.constants.ts. */
   private generateRawToken(): string {
-    return randomBytes(48).toString('base64url');
+    return randomBytes(REFRESH_TOKEN_BYTES).toString(REFRESH_TOKEN_ENCODING);
   }
 
   /**
@@ -185,6 +190,8 @@ export class TokenService {
    * refresh. Hashing exists here solely so a leaked database table contains no usable tokens.
    */
   private hashToken(rawToken: string): string {
-    return createHash('sha256').update(rawToken).digest('hex');
+    return createHash(REFRESH_TOKEN_HASH_ALGORITHM)
+      .update(rawToken)
+      .digest('hex');
   }
 }

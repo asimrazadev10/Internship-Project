@@ -29,3 +29,21 @@ export const UPLOAD_ACCEPT =
  * MaxFileSizeValidator. Used only for the tooltip — the real rejection happens server-side.
  */
 export const MAX_UPLOAD_MB = 5;
+
+/**
+ * Mirrors PASSWORD_MIN_LENGTH / PASSWORD_MAX_LENGTH / EMAIL_MAX_LENGTH in
+ * backend/src/auth/auth.constants.ts, enforced there by RegisterDto and LoginDto.
+ *
+ * The form enforces them so the user is corrected before a round trip rather than after a 400.
+ * They must agree with the backend or the form rejects what the API would accept, or vice versa.
+ */
+export const PASSWORD_MIN_LENGTH = 8;
+export const PASSWORD_MAX_LENGTH = 128;
+export const EMAIL_MAX_LENGTH = 254;
+
+/**
+ * Mirrors SEARCH_QUERY_MAX_LENGTH in backend/src/messages/message.constants.ts, enforced there by
+ * SearchMessagesDto's @Length. The search input previously had no maxLength at all, so a 101-char
+ * query 400'd with nothing in the UI to explain it.
+ */
+export const SEARCH_MAX_QUERY_LENGTH = 100;

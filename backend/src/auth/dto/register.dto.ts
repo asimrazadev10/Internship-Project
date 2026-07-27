@@ -1,19 +1,29 @@
 import { IsEmail, IsString, MaxLength, MinLength } from 'class-validator';
 
+import {
+  EMAIL_MAX_LENGTH,
+  NAME_MAX_LENGTH,
+  NAME_MIN_LENGTH,
+  PASSWORD_MAX_LENGTH,
+  PASSWORD_MIN_LENGTH,
+} from '../auth.constants';
+
 export class RegisterDto {
   @IsEmail({}, { message: 'A valid email is required' })
-  @MaxLength(254) // RFC 5321 maximum length of an email address
+  @MaxLength(EMAIL_MAX_LENGTH)
   email: string;
 
+  // The message interpolates the bound rather than spelling it, so the number has exactly one
+  // definition — writing "at least 8 characters" here would reintroduce the copy being removed.
   @IsString()
-  @MinLength(8, { message: 'Password must be at least 8 characters' })
-  // argon2 has no 72-byte truncation issue (unlike bcrypt), but an upper bound still guards
-  // against a multi-megabyte body being fed into the hash function as a cheap DoS.
-  @MaxLength(128)
+  @MinLength(PASSWORD_MIN_LENGTH, {
+    message: `Password must be at least ${PASSWORD_MIN_LENGTH} characters`,
+  })
+  @MaxLength(PASSWORD_MAX_LENGTH)
   password: string;
 
   @IsString()
-  @MinLength(1)
-  @MaxLength(80)
+  @MinLength(NAME_MIN_LENGTH)
+  @MaxLength(NAME_MAX_LENGTH)
   name: string;
 }
