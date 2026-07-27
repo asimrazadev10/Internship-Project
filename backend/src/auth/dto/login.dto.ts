@@ -1,10 +1,19 @@
+import { Transform } from 'class-transformer';
 import { IsEmail, IsString, MaxLength } from 'class-validator';
 
-import { EMAIL_MAX_LENGTH, PASSWORD_MAX_LENGTH } from '../auth.constants';
+import {
+  EMAIL_MAX_LENGTH,
+  PASSWORD_MAX_LENGTH,
+  normalizeEmail,
+} from '../auth.constants';
 
 export class LoginDto {
+  // Normalised identically to RegisterDto — this is the lookup side of the same rule. If only one
+  // of the two normalised, an account would exist that could never be signed into.
+  //
   // Shares EMAIL_MAX_LENGTH with RegisterDto by construction: an address long enough to register
   // must be able to log in.
+  @Transform(({ value }) => normalizeEmail(value))
   @IsEmail({}, { message: 'A valid email is required' })
   @MaxLength(EMAIL_MAX_LENGTH)
   email: string;

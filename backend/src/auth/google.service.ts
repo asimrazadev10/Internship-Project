@@ -2,6 +2,7 @@ import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { OAuth2Client } from 'google-auth-library';
 
+import { normalizeEmail } from './auth.constants';
 import { GoogleIdentity } from './interfaces/auth.types';
 
 /**
@@ -52,11 +53,17 @@ export class GoogleService {
       throw new UnauthorizedException('Google token is missing a subject');
     }
 
+    // Normalised with the SAME rule the local DTOs use. Both the duplicate-email check in
+    // AuthService and the row it may create read this value, so if Google returned "Asim@x.com"
+    // while a LOCAL account exists as "asim@x.com", an unnormalised value would miss the check
+    // and create a second account for one person.
+    const email = normalizeEmail(payload.email) as string;
+
     return {
       providerId: payload.sub,
-      email: payload.email,
+      email,
       // Google does not guarantee a name claim; fall back to the email so `name` is never null.
-      name: payload.name ?? payload.email,
+      name: payload.name ?? email,
     };
   }
 

@@ -1,6 +1,12 @@
 import { Prisma } from '@prisma/client';
 
 /**
+ * Longest permitted group name. Mirrored by the frontend's input, which caps typing so the user is
+ * stopped at the boundary rather than 400'd after submitting.
+ */
+export const GROUP_NAME_MAX_LENGTH = 80;
+
+/**
  * The member shape returned by group reads.
  *
  * This was written out twice — once in GroupsService.findOne's nested members select, and again in

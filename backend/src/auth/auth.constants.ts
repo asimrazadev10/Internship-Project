@@ -17,6 +17,21 @@
 /** RFC 5321 maximum length of an email address. */
 export const EMAIL_MAX_LENGTH = 254;
 
+/**
+ * The single definition of what "the same email" means.
+ *
+ * Applied by RegisterDto, LoginDto and the Google sign-in path, so all three agree — the UNIQUE
+ * constraint on User.email can only mean "one account per address" if every write and every
+ * lookup normalises identically. Miss one and you get an account that exists but cannot be
+ * signed into.
+ *
+ * Lowercasing the whole address is a deliberate simplification: the local part is technically
+ * case-sensitive per RFC 5321, but no mail provider in practice treats it that way, and users
+ * overwhelmingly expect Asim@x.com and asim@x.com to be one account.
+ */
+export const normalizeEmail = (value: unknown): unknown =>
+  typeof value === 'string' ? value.trim().toLowerCase() : value;
+
 /** Minimum password length. Enforced at registration only — see LoginDto for why not at login. */
 export const PASSWORD_MIN_LENGTH = 8;
 

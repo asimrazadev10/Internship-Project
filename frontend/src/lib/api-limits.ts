@@ -47,3 +47,14 @@ export const EMAIL_MAX_LENGTH = 254;
  * query 400'd with nothing in the UI to explain it.
  */
 export const SEARCH_MAX_QUERY_LENGTH = 100;
+
+/**
+ * Mirrors GROUP_NAME_MAX_LENGTH in backend/src/groups/group.constants.ts, enforced there by
+ * CreateGroupDto.
+ *
+ * Note the backend also TRIMS the name and enforces @@unique([createdBy, name]), so a duplicate
+ * comes back as a 409 the form surfaces. The client deliberately does not pre-check for duplicates:
+ * only the database constraint is atomic, and a check here would be both racy and a second copy of
+ * a rule the schema already states.
+ */
+export const GROUP_NAME_MAX_LENGTH = 80;

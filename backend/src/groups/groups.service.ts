@@ -36,18 +36,32 @@ export class GroupsService {
    * nobody can administer, and an orphan membership makes no sense. $transaction gives
    * all-or-nothing — if the second insert fails, the first is rolled back.
    */
-  create(userId: string, name: string): Promise<Group> {
-    return this.prisma.$transaction(async (tx) => {
-      const group = await tx.group.create({
-        data: { name, createdBy: userId },
-      });
+  async create(userId: string, name: string): Promise<Group> {
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const group = await tx.group.create({
+          data: { name, createdBy: userId },
+        });
 
-      await tx.groupMember.create({
-        data: { groupId: group.id, userId, role: MemberRole.OWNER },
-      });
+        await tx.groupMember.create({
+          data: { groupId: group.id, userId, role: MemberRole.OWNER },
+        });
 
-      return group;
-    });
+        return group;
+      });
+    } catch (error) {
+      // @@unique([createdBy, name]) → P2002 when this user already has a group by that name.
+      // Caught here rather than left to the global filter purely for the message: the generic
+      // mapping would answer "A record with this createdBy, name already exists", which leaks
+      // column names and tells the user nothing actionable.
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new ConflictException('You already have a group with this name');
+      }
+      throw error;
+    }
   }
 
   /**

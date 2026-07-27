@@ -34,8 +34,14 @@ describe('GroupsService.assertMember (e2e)', () => {
     await app.close();
   });
 
-  it('resolves for a member', async () => {
-    await expect(groups.assertMember(memberId, groupId)).resolves.toBeUndefined();
+  // Returns the membership row rather than void, so GroupMemberGuard can stash it on the request
+  // for handlers that need the caller's role without issuing a second identical query.
+  it('resolves with the membership row for a member', async () => {
+    await expect(groups.assertMember(memberId, groupId)).resolves.toMatchObject({
+      groupId,
+      userId: memberId,
+      role: 'OWNER',
+    });
   });
 
   it('throws Forbidden for a non-member', async () => {

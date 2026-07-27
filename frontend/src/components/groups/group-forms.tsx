@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import { INPUT_CLASS, PRIMARY_BUTTON_CLASS } from "@/components/ui/styles";
+import { GROUP_NAME_MAX_LENGTH } from "@/lib/api-limits";
 import { getApiErrorMessage } from "@/lib/api/error";
 import { useCreateGroup, useJoinGroup } from "@/lib/queries/groups";
 
@@ -40,7 +41,7 @@ export function CreateGroupForm() {
         <input
           aria-label="New group name"
           placeholder="Name a new group…"
-          maxLength={80}
+          maxLength={GROUP_NAME_MAX_LENGTH}
           value={name}
           onChange={(e) => setName(e.target.value)}
           disabled={createGroup.isPending}

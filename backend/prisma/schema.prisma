@@ -77,6 +77,20 @@ model Group {
   members  GroupMember[]
   messages Message[]
 
+  // One creator cannot make two groups with the same name. Scoped to the creator, NOT global:
+  // two different people should each be able to have a "Team" — a global unique name would let
+  // the first user to claim a common word deny it to everyone else.
+  //
+  // Enforced in the database rather than by a findFirst-then-create check in the service, for the
+  // same reason User.email is: only the constraint is atomic. Two concurrent create requests both
+  // pass a pre-check and both insert; the constraint is what actually holds. Names are trimmed by
+  // CreateGroupDto so " Team" cannot slip past as a distinct value.
+  //
+  // Deliberately case-SENSITIVE: "Team" and "team" are treated as different names. Making it
+  // case-insensitive needs a functional index on LOWER(name), which Prisma cannot express in the
+  // schema and would have to be hand-written SQL — a cost not worth paying for a rename nobody
+  // has asked for.
+  @@unique([createdBy, name])
   @@index([createdAt])
 }
 
