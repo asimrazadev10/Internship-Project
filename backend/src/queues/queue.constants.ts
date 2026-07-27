@@ -20,8 +20,17 @@ export const SUMMARY_FLOW = 'summary-flow';
  */
 export const SUMMARY_SCHEDULER_ID = 'daily-summary';
 
+/**
+ * Id of the second repeatable job on the scheduler queue: the refresh-token purge.
+ *
+ * A distinct id from SUMMARY_SCHEDULER_ID, because upsertJobScheduler is idempotent PER ID — the
+ * two schedules must not overwrite one another. Its own id, its own interval, its own job name.
+ */
+export const TOKEN_PURGE_SCHEDULER_ID = 'refresh-token-purge';
+
 // Job names — also used as the jobId prefix per stage.
 export const JOB_SCHEDULER_TICK = 'scheduler-tick';
+export const JOB_TOKEN_PURGE = 'refresh-token-purge';
 export const JOB_GROUP_SUMMARY = 'group-summary'; // the per-group parent job (flow root)
 export const JOB_FETCH = 'fetch-messages'; // leaf — reads the window's messages
 export const JOB_GENERATE = 'generate-ai-summary';

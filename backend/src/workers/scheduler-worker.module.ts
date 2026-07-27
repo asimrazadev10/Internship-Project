@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { BullModule } from '@nestjs/bullmq';
 
+import { RefreshTokenPurgeModule } from '../auth/refresh-token-purge.module';
 import { AppConfigModule } from '../config/config.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { bullConnectionFactory } from '../config/redis.config';
@@ -19,6 +20,7 @@ import { SummaryService } from '../summary/summary.service';
     }),
     BullModule.registerQueue({ name: SCHEDULER_QUEUE }),
     BullModule.registerFlowProducer({ name: SUMMARY_FLOW }),
+    RefreshTokenPurgeModule,
   ],
   providers: [SchedulerProcessor, SummaryService],
 })

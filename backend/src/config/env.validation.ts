@@ -12,6 +12,7 @@ import {
 } from 'class-validator';
 
 import { AI_RATE_LIMIT } from '../ai/ai.constants';
+import { REFRESH_TOKEN_PURGE_GRACE_MS as PURGE_GRACE_DEFAULT } from '../auth/auth.constants';
 import { WORKER_CONCURRENCY } from '../queues/queue.constants';
 
 /**
@@ -154,6 +155,21 @@ export class EnvironmentVariables {
   @IsInt({ message: 'SUMMARY_WINDOW_MS must be an integer' })
   @Min(1000)
   SUMMARY_WINDOW_MS = 86_400_000;
+
+  // How often the refresh-token purge runs. Its OWN knob rather than reusing SUMMARY_INTERVAL_MS,
+  // which is documented as "set small (e.g. 60000) to demo" — a demo tick must not drag token
+  // deletion along with it every minute.
+  @Type(() => Number)
+  @IsInt({ message: 'TOKEN_PURGE_INTERVAL_MS must be an integer' })
+  @Min(1000)
+  TOKEN_PURGE_INTERVAL_MS = 86_400_000;
+
+  // How long an EXPIRED refresh token is kept before the purge deletes it. The default and the
+  // reasoning behind an expiry-only predicate live on the constant.
+  @Type(() => Number)
+  @IsInt({ message: 'REFRESH_TOKEN_PURGE_GRACE_MS must be an integer' })
+  @Min(0)
+  REFRESH_TOKEN_PURGE_GRACE_MS: number = PURGE_GRACE_DEFAULT;
 
   // Phase 5 — per-worker BullMQ concurrency. Each standalone worker process reads its own knob.
   // Read two ways: the @Processor decorator reads process.env directly (it evaluates before

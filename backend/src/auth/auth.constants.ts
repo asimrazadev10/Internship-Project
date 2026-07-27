@@ -66,3 +66,19 @@ export const REFRESH_TOKEN_ENCODING = 'base64url' as const;
  * low-entropy and argon2id is therefore correct.)
  */
 export const REFRESH_TOKEN_HASH_ALGORITHM = 'sha256' as const;
+
+/**
+ * How long a token stays in the table after it has EXPIRED, before the purge job deletes it.
+ *
+ * The grace period is the whole design, and the reason the obvious purge is wrong. Reuse
+ * detection works by finding a row that still EXISTS and has `revokedAt` set (TokenService.rotate);
+ * that is the entire mechanism. Purging on `revokedAt IS NOT NULL` would therefore delete the
+ * security feature — a replayed token would read as merely unknown, the family would never be
+ * burned, and nothing would log.
+ *
+ * So the purge only ever removes rows already past `expiresAt`, which `rotate` refuses anyway. The
+ * one capability lost is burning a family via a token that was useless already, and burning is a
+ * defensive action rather than an attack. This grace keeps recent replays detectable for a week
+ * past expiry; revoked-but-unexpired rows are never touched at any age.
+ */
+export const REFRESH_TOKEN_PURGE_GRACE_MS = 7 * 24 * 60 * 60 * 1000;
