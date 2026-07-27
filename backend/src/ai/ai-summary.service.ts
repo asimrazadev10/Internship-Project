@@ -1,6 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { createGoogleGenerativeAI } from '@ai-sdk/google';
+import {
+  createGoogleGenerativeAI,
+  GoogleGenerativeAIProvider,
+} from '@ai-sdk/google';
 import { generateText } from 'ai';
 
 import {
@@ -19,7 +22,10 @@ import {
  */
 @Injectable()
 export class AiSummaryService {
-  private readonly google;
+  // Annotated, not inferred: tsconfig sets noImplicitAny false, so a bare `private readonly
+  // google;` is silently `any` — and every call through it (`this.google(this.model)`) loses type
+  // checking without TypeScript saying a word.
+  private readonly google: GoogleGenerativeAIProvider;
   private readonly model: string;
 
   constructor(private readonly config: ConfigService) {

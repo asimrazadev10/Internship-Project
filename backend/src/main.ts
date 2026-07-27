@@ -43,7 +43,7 @@ async function bootstrap(): Promise<void> {
   // Redis-backed Socket.IO adapter: `server.to(room).emit` fans out across gateway instances
   // via Redis pub/sub. Wired even single-node so scaling out later needs no code change.
   const redisIoAdapter = new RedisIoAdapter(app);
-  await redisIoAdapter.connectToRedis(config);
+  redisIoAdapter.connectToRedis(config);
   app.useWebSocketAdapter(redisIoAdapter);
 
   // getOrThrow, not get(key, fallback): the validated schema always carries PORT (it declares its

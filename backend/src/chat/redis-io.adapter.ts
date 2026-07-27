@@ -18,7 +18,13 @@ export class RedisIoAdapter extends IoAdapter {
     super(app);
   }
 
-  async connectToRedis(config: ConfigService): Promise<void> {
+  /**
+   * Synchronous despite the name: ioredis connects LAZILY, so `new Redis(opts)` returns
+   * immediately and the handshake happens on first use. There is nothing to await here, and
+   * marking it `async` implied a connection had been established by the time it resolved — which
+   * was never true. Failures surface on the socket, not from this call.
+   */
+  connectToRedis(config: ConfigService): void {
     const opts = {
       host: config.getOrThrow<string>('REDIS_HOST'),
       port: config.getOrThrow<number>('REDIS_PORT'),

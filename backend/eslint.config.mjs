@@ -37,12 +37,18 @@ export default tseslint.config(
     // response shape just to satisfy the type-aware rules would add noise without catching real
     // bugs — the assertions themselves are the type check here. Relax the unsafe-access family
     // for tests only; production code keeps the full strictness.
+    //
+    // no-unsafe-return belongs to that same family and was simply missed when this block was
+    // written: `const server = () => app.getHttpServer()` returns `any` in every e2e spec. It is
+    // listed here rather than worked around at five call sites, because the decision already
+    // taken above is the one that covers it.
     files: ['test/**/*.ts', 'src/**/*.spec.ts'],
     rules: {
       '@typescript-eslint/no-unsafe-member-access': 'off',
       '@typescript-eslint/no-unsafe-assignment': 'off',
       '@typescript-eslint/no-unsafe-call': 'off',
       '@typescript-eslint/no-unsafe-argument': 'off',
+      '@typescript-eslint/no-unsafe-return': 'off',
     },
   },
 );

@@ -1,6 +1,7 @@
 import { Transform } from 'class-transformer';
 import { IsEmail, IsString, MaxLength, MinLength } from 'class-validator';
 
+import { Trim } from '../../common/decorators/trim.decorator';
 import {
   EMAIL_MAX_LENGTH,
   NAME_MAX_LENGTH,
@@ -31,7 +32,7 @@ export class RegisterDto {
 
   // Trimmed for the same reason group names are: "   " would otherwise satisfy @MinLength(1) and
   // create a user whose display name renders as blank everywhere.
-  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @Trim()
   @IsString()
   @MinLength(NAME_MIN_LENGTH)
   @MaxLength(NAME_MAX_LENGTH)
