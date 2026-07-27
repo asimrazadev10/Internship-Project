@@ -2,6 +2,20 @@ import { ImageResponse } from "next/og";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import {
+  AURORA_CANVAS_DARK,
+  AURORA_MUTED_ON_DARK,
+  AURORA_TEXT_ON_DARK,
+  BRAND_CHIP_GRADIENT,
+  BRAND_CYAN,
+  BRAND_INDIGO,
+  BRAND_VIOLET,
+  MARK_ARC_32,
+  MARK_DOTS_32,
+  MARK_STROKE_WIDTH_32,
+  SITE_TAGLINE,
+} from "@/lib/brand.constants";
+
 /**
  * The social card — what a shared link renders as on Slack, WhatsApp, X, LinkedIn.
  *
@@ -42,10 +56,13 @@ export default async function Image() {
           flexDirection: "column",
           justifyContent: "center",
           padding: 88,
-          background: "#0F1226",
+          background: AURORA_CANVAS_DARK,
+          // rgba rather than the hex constants: these need an alpha channel, and CSS gradients
+          // take no hex-with-opacity here. 124,58,237 IS BRAND_VIOLET and 34,211,238 IS
+          // BRAND_CYAN — worth stating, because a grep for the hex will not find these two.
           backgroundImage:
             "radial-gradient(900px 600px at 8% -10%, rgba(124,58,237,0.45), transparent 60%), radial-gradient(700px 500px at 100% 10%, rgba(34,211,238,0.32), transparent 55%)",
-          color: "#E7E9F5",
+          color: AURORA_TEXT_ON_DARK,
           fontFamily: "Space Grotesk",
         }}
       >
@@ -62,9 +79,9 @@ export default async function Image() {
         >
           <defs>
             <linearGradient id="og-ribbon" x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0%" stopColor="#7C3AED" />
-              <stop offset="50%" stopColor="#6366F1" />
-              <stop offset="100%" stopColor="#22D3EE" />
+              <stop offset="0%" stopColor={BRAND_VIOLET} />
+              <stop offset="50%" stopColor={BRAND_INDIGO} />
+              <stop offset="100%" stopColor={BRAND_CYAN} />
             </linearGradient>
           </defs>
           <g fill="none" stroke="url(#og-ribbon)" strokeLinecap="round">
@@ -95,20 +112,21 @@ export default async function Image() {
               alignItems: "center",
               justifyContent: "center",
               borderRadius: 20,
-              background: "linear-gradient(135deg, #6366F1, #22D3EE)",
+              background: BRAND_CHIP_GRADIENT,
             }}
           >
-            {/* the Convo mark — geometry mirrors brand-mark.tsx */}
+            {/* the Convo mark — geometry mirrors brand-mark.tsx, scaled to the 32-unit grid */}
             <svg width="48" height="48" viewBox="0 0 32 32" fill="none">
               <path
-                d="M 3.3 22 C 9.3 14, 18 24, 28.7 12.7"
+                d={MARK_ARC_32}
                 stroke="#fff"
-                strokeWidth="2.2"
+                strokeWidth={MARK_STROKE_WIDTH_32}
                 strokeLinecap="round"
                 opacity="0.4"
               />
-              <circle cx="12" cy="13.3" r="6" fill="#fff" opacity="0.55" />
-              <circle cx="20" cy="18.7" r="6" fill="#fff" />
+              {MARK_DOTS_32.map((d, i) => (
+                <circle key={i} cx={d.cx} cy={d.cy} r={d.r} fill="#fff" opacity={d.opacity} />
+              ))}
             </svg>
           </div>
           <div style={{ display: "flex", fontSize: 46 }}>Convo</div>
@@ -124,10 +142,17 @@ export default async function Image() {
             maxWidth: 900,
           }}
         >
-          Where your group actually talks.
+          {SITE_TAGLINE}
         </div>
 
-        <div style={{ display: "flex", marginTop: 28, fontSize: 30, color: "#98A0C8" }}>
+        <div
+          style={{
+            display: "flex",
+            marginTop: 28,
+            fontSize: 30,
+            color: AURORA_MUTED_ON_DARK,
+          }}
+        >
           Real-time group chat — NestJS · Postgres · Socket.IO · Next.js
         </div>
       </div>

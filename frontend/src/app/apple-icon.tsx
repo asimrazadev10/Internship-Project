@@ -1,5 +1,12 @@
 import { ImageResponse } from "next/og";
 
+import {
+  BRAND_CHIP_GRADIENT,
+  MARK_ARC_32,
+  MARK_DOTS_32,
+  MARK_STROKE_WIDTH_32,
+} from "@/lib/brand.constants";
+
 /**
  * The iOS home-screen icon.
  *
@@ -23,19 +30,20 @@ export default function AppleIcon() {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          background: "linear-gradient(135deg, #6366F1, #22D3EE)",
+          background: BRAND_CHIP_GRADIENT,
         }}
       >
         <svg width="112" height="112" viewBox="0 0 32 32" fill="none">
           <path
-            d="M 3.3 22 C 9.3 14, 18 24, 28.7 12.7"
+            d={MARK_ARC_32}
             stroke="#fff"
-            strokeWidth="2.2"
+            strokeWidth={MARK_STROKE_WIDTH_32}
             strokeLinecap="round"
             opacity="0.4"
           />
-          <circle cx="12" cy="13.3" r="6" fill="#fff" opacity="0.55" />
-          <circle cx="20" cy="18.7" r="6" fill="#fff" />
+          {MARK_DOTS_32.map((d, i) => (
+            <circle key={i} cx={d.cx} cy={d.cy} r={d.r} fill="#fff" opacity={d.opacity} />
+          ))}
         </svg>
       </div>
     ),
