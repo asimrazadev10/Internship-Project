@@ -1,12 +1,20 @@
 import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 
 import { AppModule } from './app.module';
 import { RedisIoAdapter } from './chat/redis-io.adapter';
+import { StorageService } from './storage/storage.service';
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+
+  // Serve locally-stored uploads (the dev fallback when Supabase isn't configured) as public
+  // static files at /uploads. The browser reaches these via the Next /api proxy. Registered as
+  // Express middleware, so it bypasses the global JWT guard — these are public URLs by design,
+  // exactly like a Supabase public bucket.
+  app.useStaticAssets(StorageService.uploadsDir(), { prefix: '/uploads/' });
 
   // Without this, Nest does not listen for SIGTERM/SIGINT, so onModuleDestroy never fires
   // and the Prisma pool is torn down by process exit instead of being closed.
@@ -20,7 +28,10 @@ async function bootstrap(): Promise<void> {
   await redisIoAdapter.connectToRedis(config);
   app.useWebSocketAdapter(redisIoAdapter);
 
-  const port = config.get<number>('PORT', 3000);
+  // getOrThrow, not get(key, fallback): the validated schema always carries PORT (it declares its
+  // own default), so a fallback here is unreachable code that would silently disagree with the
+  // schema the day someone changes that default.
+  const port = config.getOrThrow<number>('PORT');
 
   await app.listen(port);
 

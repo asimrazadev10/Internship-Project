@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 
 import {
   Injectable,
@@ -24,16 +26,17 @@ export interface StoredFile {
 }
 
 /**
- * Uploads attachment bytes to Supabase Storage.
+ * Uploads attachment bytes. Two backends, chosen at runtime:
  *
- * Design: the backend talks to the Storage REST API directly with `fetch` and the service-role
- * key — no @supabase/supabase-js SDK. One fewer dependency, and the whole contract is visible in
- * one method: a POST of the raw bytes, then a deterministic public URL. The service-role key never
- * leaves the server; the browser only ever receives the resulting public URL.
- *
- * Config is OPTIONAL at boot: SUPABASE_* are validated as optional so the app runs without file
- * uploads configured (every other feature is independent). A real upload attempted without
- * configuration fails fast with 503 rather than a confusing network error.
+ * - **Supabase Storage** (preferred, for production): the backend talks to the Storage REST API
+ *   directly with `fetch` and the service-role key — no @supabase/supabase-js SDK. One fewer
+ *   dependency, and the whole contract is visible in one method: a POST of the raw bytes, then a
+ *   deterministic public URL. The service-role key never leaves the server; the browser only ever
+ *   receives the resulting public URL.
+ * - **Local disk** (fallback, for dev): when SUPABASE_* aren't configured, bytes are written under
+ *   `uploads/<groupId>/` and served back through the backend's static `/uploads` route (reached by
+ *   the browser via the Next `/api` proxy). This means uploads work out of the box with no external
+ *   setup; wiring Supabase later is a pure config change, no code change.
  */
 @Injectable()
 export class StorageService {
@@ -41,35 +44,43 @@ export class StorageService {
 
   constructor(private readonly config: ConfigService) {}
 
-  /** True when SUPABASE_URL and a service key are present — i.e. uploads can actually run. */
+  /** True when SUPABASE_URL and a service key are present — i.e. the Supabase path is used. */
   get configured(): boolean {
     return Boolean(
       this.config.get<string>('SUPABASE_URL') &&
-        this.config.get<string>('SUPABASE_SERVICE_KEY'),
+      this.config.get<string>('SUPABASE_SERVICE_KEY'),
     );
   }
 
   private get bucket(): string {
-    return this.config.get<string>('SUPABASE_BUCKET') ?? 'chat-uploads';
+    // The default lives on the env schema (SUPABASE_BUCKET = 'chat-uploads'), like every other
+    // defaulted setting — so the documented value and the effective value cannot disagree.
+    return this.config.getOrThrow<string>('SUPABASE_BUCKET');
   }
 
   /**
-   * Store a file under `<groupId>/<uuid>-<safeName>` and return its public URL + metadata.
-   * Path is namespaced by group so one group's uploads never collide with another's, and the
-   * uuid prefix guarantees uniqueness even for repeated identical filenames.
+   * Store a file under `<groupId>/<uuid>-<safeName>` and return its URL + metadata. Path is
+   * namespaced by group so one group's uploads never collide with another's, and the uuid prefix
+   * guarantees uniqueness even for repeated identical filenames.
    */
   async upload(groupId: string, file: UploadedFileLike): Promise<StoredFile> {
-    const base = this.config.get<string>('SUPABASE_URL');
-    const key = this.config.get<string>('SUPABASE_SERVICE_KEY');
-    if (!base || !key) {
-      throw new ServiceUnavailableException('File uploads are not configured');
-    }
-
     // Keep only filename-safe characters and cap length so a hostile name can't build a path.
     const safeName =
       file.originalname.replace(/[^\w.-]+/g, '_').slice(-80) || 'file';
     const objectPath = `${groupId}/${randomUUID()}-${safeName}`;
-    const root = base.replace(/\/$/, '');
+    return this.configured
+      ? this.uploadToSupabase(objectPath, file)
+      : this.uploadToLocal(objectPath, file);
+  }
+
+  private async uploadToSupabase(
+    objectPath: string,
+    file: UploadedFileLike,
+  ): Promise<StoredFile> {
+    const root = this.config
+      .getOrThrow<string>('SUPABASE_URL')
+      .replace(/\/$/, '');
+    const key = this.config.getOrThrow<string>('SUPABASE_SERVICE_KEY');
     const endpoint = `${root}/storage/v1/object/${this.bucket}/${encodeURI(objectPath)}`;
 
     const res = await fetch(endpoint, {
@@ -98,5 +109,31 @@ export class StorageService {
       mime: file.mimetype,
       size: file.size,
     };
+  }
+
+  private async uploadToLocal(
+    objectPath: string,
+    file: UploadedFileLike,
+  ): Promise<StoredFile> {
+    const absPath = join(StorageService.uploadsDir(), objectPath);
+    await mkdir(join(absPath, '..'), { recursive: true });
+    await writeFile(absPath, file.buffer);
+    this.logger.log(
+      `stored locally: uploads/${objectPath} (${file.size} bytes)`,
+    );
+
+    // Relative URL served by the backend's static /uploads route, reached from the browser through
+    // the Next /api proxy (keeping everything same-origin, matching the app's proxy architecture).
+    return {
+      url: `/api/uploads/${objectPath}`,
+      name: file.originalname,
+      mime: file.mimetype,
+      size: file.size,
+    };
+  }
+
+  /** Absolute path of the local uploads directory (shared with main.ts's static route). */
+  static uploadsDir(): string {
+    return join(process.cwd(), 'uploads');
   }
 }
