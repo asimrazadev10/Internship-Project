@@ -1,4 +1,4 @@
-import { AuroraRibbons } from "@/components/ui/aurora-ribbons";
+import { AURORA_VIEWBOX, AuroraRibbons } from "@/components/ui/aurora-ribbons";
 
 /**
  * Empty-state artwork, all built on the AuroraRibbons primitive.
@@ -63,7 +63,7 @@ function Bubble({
 /** No groups yet — a single bubble lifting clear of the ribbon field. */
 export function EmptyGroups() {
   return (
-    <svg viewBox="0 0 200 140" className="h-32 w-auto" aria-hidden>
+    <svg viewBox={AURORA_VIEWBOX} className="h-32 w-auto" aria-hidden>
       <AuroraRibbons id="groups" bands={5} />
       <Bubble x={58} y={26} w={84} h={36} opacity={1} />
     </svg>
@@ -73,7 +73,7 @@ export function EmptyGroups() {
 /** No messages yet — two bubbles, the second faint: a conversation that hasn't started. */
 export function EmptyMessages() {
   return (
-    <svg viewBox="0 0 200 140" className="h-32 w-auto" aria-hidden>
+    <svg viewBox={AURORA_VIEWBOX} className="h-32 w-auto" aria-hidden>
       <AuroraRibbons id="messages" bands={4} />
       <Bubble x={26} y={18} w={78} h={32} opacity={1} />
       <Bubble x={104} y={56} w={68} h={28} opacity={0.5} />

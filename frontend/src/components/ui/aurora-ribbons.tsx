@@ -15,6 +15,14 @@
  *
  * Drawn against a `0 0 200 140` viewBox, supplied by the parent <svg>.
  */
+/**
+ * The viewBox this primitive's geometry is drawn against. A CONTRACT, not styling: the bands and
+ * glow below use hard-coded coordinates (the ellipse at cx=100 cy=104, bands running x=-10 to 210),
+ * so a parent <svg> supplying a different viewBox silently misplaces the artwork — no type error,
+ * no warning. Exported so every caller states the same one instead of retyping it.
+ */
+export const AURORA_VIEWBOX = "0 0 200 140";
+
 export function AuroraRibbons({
   id,
   bands = 5,
