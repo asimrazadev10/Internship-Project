@@ -9,6 +9,17 @@ export const NOTIFICATION_QUEUE = 'notification-queue';
 // FlowProducer name (registered by the scheduler worker; injected with @InjectFlowProducer).
 export const SUMMARY_FLOW = 'summary-flow';
 
+/**
+ * Id of the repeatable scheduler registered with upsertJobScheduler.
+ *
+ * upsertJobScheduler is idempotent PER ID — so a typo does not replace the existing scheduler, it
+ * registers a SECOND one beside it while the original keeps firing from Redis state. Every active
+ * group would then be summarized twice, and nothing would fail. Its siblings (queue names, job
+ * names) are already centralized here, including JOB_SCHEDULER_TICK, which is passed in the very
+ * same upsertJobScheduler call.
+ */
+export const SUMMARY_SCHEDULER_ID = 'daily-summary';
+
 // Job names — also used as the jobId prefix per stage.
 export const JOB_SCHEDULER_TICK = 'scheduler-tick';
 export const JOB_GROUP_SUMMARY = 'group-summary'; // the per-group parent job (flow root)
@@ -118,8 +129,39 @@ export const concurrencyFromEnv = (key: string, fallback: number): number => {
   return Number.isInteger(n) && n > 0 ? n : fallback;
 };
 
+/**
+ * Per-worker concurrency: the env KEY and its DEFAULT, together, once.
+ *
+ * Both halves used to be written twice — as a bare string plus a number inside each @Processor
+ * decorator, and again as a defaulted field on EnvironmentVariables — with nothing linking them.
+ * That is a silent failure waiting to happen in two directions:
+ *   - the two defaults can drift apart, and the decorator's copy is the one that actually runs;
+ *   - `concurrencyFromEnv` returns its fallback for ANY value it cannot parse, including a key
+ *     that does not exist, so a mistyped 'AI_WORKER_CONCURENCY' compiles, boots, passes env
+ *     validation and runs at the wrong concurrency forever, with no error anywhere.
+ *
+ * Both the decorators and the env schema now read from this map, so the key and the default have
+ * exactly one definition each.
+ */
+export const WORKER_CONCURRENCY = {
+  SCHEDULER: { key: 'SCHEDULER_WORKER_CONCURRENCY', default: 1 },
+  AI: { key: 'AI_WORKER_CONCURRENCY', default: 10 },
+  SUMMARY: { key: 'SUMMARY_WORKER_CONCURRENCY', default: 5 },
+  NOTIFICATION: { key: 'NOTIFICATION_WORKER_CONCURRENCY', default: 3 },
+} as const;
+
+/** Resolve a worker's concurrency from its env key, falling back to its declared default. */
+export const concurrencyFor = (
+  worker: keyof typeof WORKER_CONCURRENCY,
+): number => {
+  const { key, default: fallback } = WORKER_CONCURRENCY[worker];
+  return concurrencyFromEnv(key, fallback);
+};
+
 /** A flow stage has exactly one child; return its BullMQ return value (or undefined). */
-export const firstChildValue = <T>(values: Record<string, T>): T | undefined => {
+export const firstChildValue = <T>(
+  values: Record<string, T>,
+): T | undefined => {
   const all = Object.values(values);
   return all.length > 0 ? all[0] : undefined;
 };

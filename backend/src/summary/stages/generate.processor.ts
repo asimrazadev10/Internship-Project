@@ -5,7 +5,7 @@ import { Job } from 'bullmq';
 import { AiSummaryService } from '../../ai/ai-summary.service';
 import {
   AI_QUEUE,
-  concurrencyFromEnv,
+  concurrencyFor,
   firstChildValue,
 } from '../../queues/queue.constants';
 import type { FetchResult, GenerateResult } from './stage.types';
@@ -21,7 +21,7 @@ import type { FetchResult, GenerateResult } from './stage.types';
  * through N * concurrency concurrent Gemini calls with no limiter.
  */
 @Processor(AI_QUEUE, {
-  concurrency: concurrencyFromEnv('AI_WORKER_CONCURRENCY', 10),
+  concurrency: concurrencyFor('AI'),
   limiter: { max: 10, duration: 60_000 },
 })
 export class GenerateProcessor extends WorkerHost {

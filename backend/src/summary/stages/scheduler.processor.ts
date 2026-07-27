@@ -1,14 +1,20 @@
 import { Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { InjectFlowProducer, InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
+import {
+  InjectFlowProducer,
+  InjectQueue,
+  Processor,
+  WorkerHost,
+} from '@nestjs/bullmq';
 import { FlowProducer, Job, Queue } from 'bullmq';
 
 import {
   SCHEDULER_QUEUE,
   SUMMARY_FLOW,
+  SUMMARY_SCHEDULER_ID,
   JOB_SCHEDULER_TICK,
   buildSummaryFlow,
-  concurrencyFromEnv,
+  concurrencyFor,
 } from '../../queues/queue.constants';
 import { SummaryService } from '../summary.service';
 
@@ -18,9 +24,12 @@ import { SummaryService } from '../summary.service';
  * safe. Each flow is fully isolated — one group's failure never touches another's.
  */
 @Processor(SCHEDULER_QUEUE, {
-  concurrency: concurrencyFromEnv('SCHEDULER_WORKER_CONCURRENCY', 1),
+  concurrency: concurrencyFor('SCHEDULER'),
 })
-export class SchedulerProcessor extends WorkerHost implements OnApplicationBootstrap {
+export class SchedulerProcessor
+  extends WorkerHost
+  implements OnApplicationBootstrap
+{
   private readonly logger = new Logger(SchedulerProcessor.name);
 
   constructor(
@@ -35,7 +44,7 @@ export class SchedulerProcessor extends WorkerHost implements OnApplicationBoots
   async onApplicationBootstrap(): Promise<void> {
     const every = this.config.getOrThrow<number>('SUMMARY_INTERVAL_MS');
     await this.queue.upsertJobScheduler(
-      'daily-summary',
+      SUMMARY_SCHEDULER_ID,
       { every },
       { name: JOB_SCHEDULER_TICK, data: {} },
     );
@@ -59,7 +68,10 @@ export class SchedulerProcessor extends WorkerHost implements OnApplicationBoots
       } catch (err) {
         // One group's flow.add failure (e.g. a transient Redis blip) must not skip the rest of
         // the tick — log and move on so every other active group still gets summarized.
-        this.logger.error(`group ${g.id}: failed to enqueue summary flow`, err as Error);
+        this.logger.error(
+          `group ${g.id}: failed to enqueue summary flow`,
+          err as Error,
+        );
         continue;
       }
     }

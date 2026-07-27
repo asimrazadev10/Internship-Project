@@ -11,6 +11,8 @@ import {
   validateSync,
 } from 'class-validator';
 
+import { WORKER_CONCURRENCY } from '../queues/queue.constants';
+
 /**
  * Startup configuration contract.
  *
@@ -49,9 +51,8 @@ export class EnvironmentVariables {
   @IsNotEmpty({ message: 'DATABASE_URL is required' })
   DATABASE_URL!: string;
 
-  // Access and refresh use SEPARATE secrets on purpose: a leaked access secret must not let an
-  // attacker mint refresh tokens, and vice versa. Both are required — no default, because a
-  // fallback secret in code is the same as no secret at all.
+  // The signing secret for access tokens. Required with no default — a fallback secret in code is
+  // the same as no secret at all.
   @IsString()
   @IsNotEmpty({ message: 'JWT_ACCESS_SECRET is required' })
   @MinLength(32, {
@@ -59,6 +60,19 @@ export class EnvironmentVariables {
   })
   JWT_ACCESS_SECRET!: string;
 
+  /**
+   * RESERVED — currently unused by any code path. Listed in the assignment's env table, and kept
+   * here so the documented configuration surface stays complete.
+   *
+   * It has no reader because refresh tokens in this implementation are NOT JWTs: TokenService
+   * mints opaque `randomBytes` and stores only their SHA-256 hash, so there is nothing to sign and
+   * therefore no secret to sign it with. (Signing was rejected because a stateless refresh JWT
+   * cannot be revoked server-side, which rotation-with-reuse-detection requires.)
+   *
+   * If refresh tokens ever become signed JWTs, this is the secret to use — and the separation from
+   * JWT_ACCESS_SECRET would then matter, so that a leaked access secret cannot mint refresh
+   * tokens. Until then it is validated but never read.
+   */
   @IsString()
   @IsNotEmpty({ message: 'JWT_REFRESH_SECRET is required' })
   @MinLength(32, {
@@ -130,25 +144,29 @@ export class EnvironmentVariables {
   // Read two ways: the @Processor decorator reads process.env directly (it evaluates before
   // ConfigModule loads .env), and this validation guarantees the same keys are well-formed
   // integers for anything reading them through ConfigService.
+  //
+  // The defaults come from WORKER_CONCURRENCY so the decorator and this schema cannot drift —
+  // previously each number was written in both places with nothing keeping them in step.
   @Type(() => Number)
   @IsInt({ message: 'SCHEDULER_WORKER_CONCURRENCY must be an integer' })
   @Min(1)
-  SCHEDULER_WORKER_CONCURRENCY = 1;
+  SCHEDULER_WORKER_CONCURRENCY: number = WORKER_CONCURRENCY.SCHEDULER.default;
 
   @Type(() => Number)
   @IsInt({ message: 'AI_WORKER_CONCURRENCY must be an integer' })
   @Min(1)
-  AI_WORKER_CONCURRENCY = 10;
+  AI_WORKER_CONCURRENCY: number = WORKER_CONCURRENCY.AI.default;
 
   @Type(() => Number)
   @IsInt({ message: 'SUMMARY_WORKER_CONCURRENCY must be an integer' })
   @Min(1)
-  SUMMARY_WORKER_CONCURRENCY = 5;
+  SUMMARY_WORKER_CONCURRENCY: number = WORKER_CONCURRENCY.SUMMARY.default;
 
   @Type(() => Number)
   @IsInt({ message: 'NOTIFICATION_WORKER_CONCURRENCY must be an integer' })
   @Min(1)
-  NOTIFICATION_WORKER_CONCURRENCY = 3;
+  NOTIFICATION_WORKER_CONCURRENCY: number =
+    WORKER_CONCURRENCY.NOTIFICATION.default;
 
   // Bonus (file uploads) — Supabase Storage. All optional: the app boots without them and the
   // upload endpoint returns 503 until they're set. Only these three are needed because the

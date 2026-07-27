@@ -5,7 +5,7 @@ import { Job } from 'bullmq';
 import { NotificationPublisher } from '../../notifications/notification.publisher';
 import {
   NOTIFICATION_QUEUE,
-  concurrencyFromEnv,
+  concurrencyFor,
   firstChildValue,
 } from '../../queues/queue.constants';
 import type { SaveResult } from './stage.types';
@@ -16,7 +16,7 @@ import type { SaveResult } from './stage.types';
  * refetch and find it — a dropped broadcast is recoverable, never data loss.
  */
 @Processor(NOTIFICATION_QUEUE, {
-  concurrency: concurrencyFromEnv('NOTIFICATION_WORKER_CONCURRENCY', 3),
+  concurrency: concurrencyFor('NOTIFICATION'),
 })
 export class PublishProcessor extends WorkerHost {
   private readonly logger = new Logger(PublishProcessor.name);
@@ -25,7 +25,9 @@ export class PublishProcessor extends WorkerHost {
     super();
   }
 
-  async process(job: Job<{ groupId: string }>): Promise<{ published: boolean }> {
+  async process(
+    job: Job<{ groupId: string }>,
+  ): Promise<{ published: boolean }> {
     const child = firstChildValue<SaveResult>(await job.getChildrenValues());
     if (!child || child.skipped) return { published: false };
 

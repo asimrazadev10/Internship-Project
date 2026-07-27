@@ -8,7 +8,7 @@ import {
   JOB_FETCH,
   JOB_SAVE,
   JOB_GROUP_SUMMARY,
-  concurrencyFromEnv,
+  concurrencyFor,
   firstChildValue,
 } from '../../queues/queue.constants';
 import type {
@@ -27,7 +27,7 @@ import type {
  *   - group-summary (root):  the flow's parent; completes once the whole chain has finished
  */
 @Processor(SUMMARY_QUEUE, {
-  concurrency: concurrencyFromEnv('SUMMARY_WORKER_CONCURRENCY', 5),
+  concurrency: concurrencyFor('SUMMARY'),
 })
 export class SummaryProcessor extends WorkerHost {
   private readonly logger = new Logger(SummaryProcessor.name);
@@ -71,14 +71,18 @@ export class SummaryProcessor extends WorkerHost {
 
   /** save-summary: persist the generated summary as an AI_SUMMARY row (persist only). */
   private async save(job: Job): Promise<SaveResult> {
-    const child = firstChildValue<GenerateResult>(await job.getChildrenValues());
+    const child = firstChildValue<GenerateResult>(
+      await job.getChildrenValues(),
+    );
     if (!child || child.skipped) return { skipped: true };
 
     const message = await this.messages.persistAiSummary(
       child.groupId,
       child.summaryText,
     );
-    this.logger.log(`group ${child.groupId}: summary persisted (${message.id})`);
+    this.logger.log(
+      `group ${child.groupId}: summary persisted (${message.id})`,
+    );
     return { skipped: false, message };
   }
 
