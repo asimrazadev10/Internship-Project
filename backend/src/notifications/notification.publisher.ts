@@ -8,7 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import { Emitter } from '@socket.io/redis-emitter';
 import { Redis } from 'ioredis';
 
-import { roomFor } from '../chat/chat.constants';
+import { SERVER_EVENTS, roomFor } from '../chat/chat.constants';
 import { redisConnectionOptions } from '../config/redis.config';
 import type { BroadcastMessage } from '../messages/message-events';
 
@@ -33,7 +33,9 @@ export class NotificationPublisher implements OnModuleInit, OnModuleDestroy {
   }
 
   broadcastNewMessage(message: BroadcastMessage): void {
-    this.emitter.to(roomFor(message.groupId)).emit('new_message', message);
+    this.emitter
+      .to(roomFor(message.groupId))
+      .emit(SERVER_EVENTS.NEW_MESSAGE, message);
   }
 
   async onModuleDestroy(): Promise<void> {

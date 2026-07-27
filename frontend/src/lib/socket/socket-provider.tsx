@@ -15,6 +15,7 @@ import type {
 import { useAuth } from "@/lib/auth/auth-context";
 import { groupKeys } from "@/lib/queries/groups";
 import { messageKeys } from "@/lib/queries/messages";
+import { SERVER_EVENTS } from "./socket-events";
 
 const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL ?? "http://localhost:3000";
 
@@ -50,7 +51,7 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     nextSocket.on("disconnect", () => setConnected(false));
 
     // The one place socket-pushed messages enter the app. Route by the message's own groupId.
-    nextSocket.on("new_message", (message: Message) => {
+    nextSocket.on(SERVER_EVENTS.NEW_MESSAGE, (message: Message) => {
       queryClient.setQueryData<Message[]>(
         messageKeys.live(message.groupId),
         (old = []) =>
@@ -61,7 +62,7 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     // A new member joined a group we're viewing — append them to the cached group detail so the
     // member list/count updates live, no refresh. Same push idea as new_message (deduped by id).
     nextSocket.on(
-      "member_joined",
+      SERVER_EVENTS.MEMBER_JOINED,
       (payload: { groupId: string; member: GroupMemberView }) => {
         queryClient.setQueryData<GroupDetail>(
           groupKeys.detail(payload.groupId),
@@ -80,7 +81,7 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     // A message's reactions changed — patch that message wherever it lives (live buffer or a
     // loaded history page), so counts update without a refetch.
     nextSocket.on(
-      "reaction_updated",
+      SERVER_EVENTS.REACTION_UPDATED,
       (p: { groupId: string; messageId: string; reactions: Reaction[] }) => {
         const patch = (m: Message): Message =>
           m.id === p.messageId ? { ...m, reactions: p.reactions } : m;
@@ -98,7 +99,7 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
     );
 
     // An edited or deleted message — replace it in place wherever it's cached.
-    nextSocket.on("message_updated", (message: Message) => {
+    nextSocket.on(SERVER_EVENTS.MESSAGE_UPDATED, (message: Message) => {
       const replace = (m: Message): Message => (m.id === message.id ? message : m);
       queryClient.setQueryData<Message[]>(messageKeys.live(message.groupId), (old = []) =>
         old.map(replace),
@@ -114,7 +115,7 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
 
     // A member marked the group read — update their lastReadAt so "seen" indicators move live.
     nextSocket.on(
-      "read_receipt",
+      SERVER_EVENTS.READ_RECEIPT,
       (p: { groupId: string; userId: string; lastReadAt: string }) => {
         queryClient.setQueryData<GroupDetail>(groupKeys.detail(p.groupId), (old) =>
           old

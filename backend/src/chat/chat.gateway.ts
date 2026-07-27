@@ -16,7 +16,10 @@ import { Server } from 'socket.io';
 
 import { JwtPayload } from '../auth/interfaces/auth.types';
 import { MEMBER_JOINED, READ_MARKED } from '../groups/group-events';
-import type { MemberJoinedPayload, ReadMarkedPayload } from '../groups/group-events';
+import type {
+  MemberJoinedPayload,
+  ReadMarkedPayload,
+} from '../groups/group-events';
 import { GroupsService } from '../groups/groups.service';
 import { MESSAGE_CREATED, MESSAGE_UPDATED } from '../messages/message-events';
 import type {
@@ -25,8 +28,14 @@ import type {
 } from '../messages/message-events';
 import { REACTION_CHANGED } from '../messages/reaction-events';
 import type { ReactionChangedPayload } from '../messages/reaction-events';
+import { MESSAGE_CONTENT_MAX_LENGTH } from '../messages/message.constants';
 import { MessagesService } from '../messages/messages.service';
-import { roomFor } from './chat.constants';
+import {
+  CLIENT_EVENTS,
+  SERVER_EVENTS,
+  groupIdFromRoom,
+  roomFor,
+} from './chat.constants';
 import type { AuthData, AuthedSocket } from './ws.types';
 
 /**
@@ -91,8 +100,9 @@ export class ChatGateway
     // 'disconnecting' event the socket is still listed in its rooms, so exclude it explicitly.
     socket.on('disconnecting', () => {
       for (const room of socket.rooms) {
-        if (room.startsWith('group:')) {
-          void this.broadcastPresence(room.slice('group:'.length), socket.id);
+        const groupId = groupIdFromRoom(room);
+        if (groupId) {
+          void this.broadcastPresence(groupId, socket.id);
         }
       }
     });
@@ -109,7 +119,7 @@ export class ChatGateway
    * change after connection. Same rule as the HTTP GroupMemberGuard, via the shared
    * GroupsService.assertMember.
    */
-  @SubscribeMessage('join_group')
+  @SubscribeMessage(CLIENT_EVENTS.JOIN_GROUP)
   async joinGroup(
     @ConnectedSocket() socket: AuthedSocket,
     @MessageBody() body: { groupId?: string },
@@ -136,7 +146,7 @@ export class ChatGateway
     }
   }
 
-  @SubscribeMessage('leave_group')
+  @SubscribeMessage(CLIENT_EVENTS.LEAVE_GROUP)
   async leaveGroup(
     @ConnectedSocket() socket: AuthedSocket,
     @MessageBody() body: { groupId?: string },
@@ -155,7 +165,7 @@ export class ChatGateway
    * per-keystroke database hit. `socket.to(room)` excludes the sender, so you never see your own
    * "typing…". The client throttles these to one start + one stop per typing burst.
    */
-  @SubscribeMessage('typing_start')
+  @SubscribeMessage(CLIENT_EVENTS.TYPING_START)
   handleTypingStart(
     @ConnectedSocket() socket: AuthedSocket,
     @MessageBody() body: { groupId?: string },
@@ -163,7 +173,7 @@ export class ChatGateway
     this.relayTyping(socket, body?.groupId, true);
   }
 
-  @SubscribeMessage('typing_stop')
+  @SubscribeMessage(CLIENT_EVENTS.TYPING_STOP)
   handleTypingStop(
     @ConnectedSocket() socket: AuthedSocket,
     @MessageBody() body: { groupId?: string },
@@ -178,7 +188,9 @@ export class ChatGateway
   ): void {
     if (!groupId || !socket.rooms.has(roomFor(groupId))) return;
     const { userId } = socket.data as AuthData;
-    socket.to(roomFor(groupId)).emit('user_typing', { groupId, userId, typing });
+    socket
+      .to(roomFor(groupId))
+      .emit(SERVER_EVENTS.USER_TYPING, { groupId, userId, typing });
   }
 
   /**
@@ -199,7 +211,7 @@ export class ChatGateway
           .filter((id): id is string => Boolean(id)),
       ),
     ];
-    this.server.to(room).emit('presence', { groupId, userIds });
+    this.server.to(room).emit(SERVER_EVENTS.PRESENCE, { groupId, userIds });
   }
 
   /**
@@ -207,7 +219,7 @@ export class ChatGateway
    * emits MESSAGE_CREATED). It never touches `server` directly — the @OnEvent handler below is
    * the single broadcast point, so a socket send and a REST POST end up on the exact same path.
    */
-  @SubscribeMessage('send_message')
+  @SubscribeMessage(CLIENT_EVENTS.SEND_MESSAGE)
   async sendMessage(
     @ConnectedSocket() socket: AuthedSocket,
     @MessageBody() body: { groupId?: string; content?: string },
@@ -215,8 +227,11 @@ export class ChatGateway
     const { userId } = socket.data as AuthData;
     const groupId = body?.groupId ?? '';
     const content = (body?.content ?? '').trim();
-    if (!content || content.length > 4000) {
-      return { ok: false as const, error: 'Message must be 1–4000 characters' };
+    if (!content || content.length > MESSAGE_CONTENT_MAX_LENGTH) {
+      return {
+        ok: false as const,
+        error: `Message must be 1–${MESSAGE_CONTENT_MAX_LENGTH} characters`,
+      };
     }
     try {
       await this.groups.assertMember(userId, groupId);
@@ -246,7 +261,7 @@ export class ChatGateway
   broadcastMessage(payload: MessageCreatedPayload): void {
     this.server
       .to(roomFor(payload.message.groupId))
-      .emit('new_message', payload.message);
+      .emit(SERVER_EVENTS.NEW_MESSAGE, payload.message);
   }
 
   /** An edited or deleted message — push the new version so clients replace it in place. */
@@ -254,7 +269,7 @@ export class ChatGateway
   broadcastMessageUpdated(payload: MessageUpdatedPayload): void {
     this.server
       .to(roomFor(payload.message.groupId))
-      .emit('message_updated', payload.message);
+      .emit(SERVER_EVENTS.MESSAGE_UPDATED, payload.message);
   }
 
   /**
@@ -264,18 +279,24 @@ export class ChatGateway
    */
   @OnEvent(MEMBER_JOINED)
   broadcastMemberJoined(payload: MemberJoinedPayload): void {
-    this.server.to(roomFor(payload.groupId)).emit('member_joined', payload);
+    this.server
+      .to(roomFor(payload.groupId))
+      .emit(SERVER_EVENTS.MEMBER_JOINED, payload);
   }
 
   /** A message's reactions changed — push the new set to everyone viewing the group. */
   @OnEvent(REACTION_CHANGED)
   broadcastReaction(payload: ReactionChangedPayload): void {
-    this.server.to(roomFor(payload.groupId)).emit('reaction_updated', payload);
+    this.server
+      .to(roomFor(payload.groupId))
+      .emit(SERVER_EVENTS.REACTION_UPDATED, payload);
   }
 
   /** A member marked the group read — tell the room so "seen" indicators update live. */
   @OnEvent(READ_MARKED)
   broadcastRead(payload: ReadMarkedPayload): void {
-    this.server.to(roomFor(payload.groupId)).emit('read_receipt', payload);
+    this.server
+      .to(roomFor(payload.groupId))
+      .emit(SERVER_EVENTS.READ_RECEIPT, payload);
   }
 }

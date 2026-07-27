@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useSocket } from "./socket-provider";
+import { CLIENT_EVENTS, SERVER_EVENTS } from "./socket-events";
 
 const STOP_AFTER = 2500; // emit typing_stop this long after the last keystroke
 const EXPIRE_AFTER = 5000; // drop a remote typer if no update lands within this window
@@ -50,9 +51,9 @@ export function useTyping(groupId: string) {
       }
     };
 
-    socket.on("user_typing", onTyping);
+    socket.on(SERVER_EVENTS.USER_TYPING, onTyping);
     return () => {
-      socket.off("user_typing", onTyping);
+      socket.off(SERVER_EVENTS.USER_TYPING, onTyping);
       timers.forEach((t) => clearTimeout(t));
       timers.clear();
       setTypingUserIds([]);
@@ -67,14 +68,14 @@ export function useTyping(groupId: string) {
     }
     if (!started.current) return;
     started.current = false;
-    socket?.emit("typing_stop", { groupId });
+    socket?.emit(CLIENT_EVENTS.TYPING_STOP, { groupId });
   }, [socket, groupId]);
 
   const notifyTyping = useCallback(() => {
     if (!socket || !connected) return;
     if (!started.current) {
       started.current = true;
-      socket.emit("typing_start", { groupId });
+      socket.emit(CLIENT_EVENTS.TYPING_START, { groupId });
     }
     if (stopTimer.current) clearTimeout(stopTimer.current);
     stopTimer.current = setTimeout(stopTyping, STOP_AFTER);
