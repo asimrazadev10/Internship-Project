@@ -12,6 +12,7 @@ import {
 import * as authApi from "@/lib/api/auth";
 import { tokenStore } from "@/lib/api/tokens";
 import type { User } from "@/lib/api/types";
+import { AUTH_LOGOUT_EVENT, USER_KEY } from "@/lib/storage-keys";
 
 /**
  * Holds the current session and exposes the auth actions.
@@ -40,8 +41,6 @@ interface AuthContextValue {
   googleLogin: (idToken: string) => Promise<void>;
   logout: () => Promise<void>;
 }
-
-const USER_KEY = "chat.user";
 
 function readStoredUser(): User | null {
   try {
@@ -95,8 +94,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setStatus("unauthenticated");
       router.replace("/login");
     }
-    window.addEventListener("auth:logout", onForcedLogout);
-    return () => window.removeEventListener("auth:logout", onForcedLogout);
+    window.addEventListener(AUTH_LOGOUT_EVENT, onForcedLogout);
+    return () => window.removeEventListener(AUTH_LOGOUT_EVENT, onForcedLogout);
   }, [router]);
 
   const login = useCallback(async (email: string, password: string) => {

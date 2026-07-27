@@ -4,6 +4,7 @@ import axios, {
   type InternalAxiosRequestConfig,
 } from "axios";
 
+import { AUTH_LOGOUT_EVENT } from "@/lib/storage-keys";
 import { tokenStore } from "./tokens";
 import type { ApiSuccess, AuthTokens } from "./types";
 
@@ -103,7 +104,7 @@ api.interceptors.response.use(
       // Refresh failed → session is dead. Notify the app so it can route to /login.
       // A DOM event keeps this module free of any React/router dependency.
       if (typeof window !== "undefined") {
-        window.dispatchEvent(new Event("auth:logout"));
+        window.dispatchEvent(new Event(AUTH_LOGOUT_EVENT));
       }
     }
 

@@ -1,3 +1,4 @@
+import { ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY } from "@/lib/storage-keys";
 import type { AuthTokens } from "./types";
 
 /**
@@ -13,32 +14,29 @@ import type { AuthTokens } from "./types";
  * server, where `window`/`localStorage` do not exist. On the server it behaves as "no tokens".
  */
 
-const ACCESS_KEY = "chat.accessToken";
-const REFRESH_KEY = "chat.refreshToken";
-
 function canUseStorage(): boolean {
   return typeof window !== "undefined" && !!window.localStorage;
 }
 
 export const tokenStore = {
   get access(): string | null {
-    return canUseStorage() ? window.localStorage.getItem(ACCESS_KEY) : null;
+    return canUseStorage() ? window.localStorage.getItem(ACCESS_TOKEN_KEY) : null;
   },
 
   get refresh(): string | null {
-    return canUseStorage() ? window.localStorage.getItem(REFRESH_KEY) : null;
+    return canUseStorage() ? window.localStorage.getItem(REFRESH_TOKEN_KEY) : null;
   },
 
   set(tokens: AuthTokens): void {
     if (!canUseStorage()) return;
-    window.localStorage.setItem(ACCESS_KEY, tokens.accessToken);
-    window.localStorage.setItem(REFRESH_KEY, tokens.refreshToken);
+    window.localStorage.setItem(ACCESS_TOKEN_KEY, tokens.accessToken);
+    window.localStorage.setItem(REFRESH_TOKEN_KEY, tokens.refreshToken);
   },
 
   clear(): void {
     if (!canUseStorage()) return;
-    window.localStorage.removeItem(ACCESS_KEY);
-    window.localStorage.removeItem(REFRESH_KEY);
+    window.localStorage.removeItem(ACCESS_TOKEN_KEY);
+    window.localStorage.removeItem(REFRESH_TOKEN_KEY);
   },
 
   get isAuthenticated(): boolean {
