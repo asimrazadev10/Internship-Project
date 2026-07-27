@@ -9,6 +9,7 @@ import { MessageType } from '@prisma/client';
 import { PaginationMeta } from '../common/http/api-response';
 import { decodeCursor, encodeCursor } from '../common/utils/cursor';
 import { PrismaService } from '../prisma/prisma.service';
+import { SEARCH_RESULT_LIMIT } from './message.constants';
 import {
   MESSAGE_CREATED,
   MESSAGE_UPDATED,
@@ -186,7 +187,7 @@ export class MessagesService {
         content: { contains: q, mode: 'insensitive' },
       },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      take: 50,
+      take: SEARCH_RESULT_LIMIT,
       select: MESSAGE_SELECT,
     });
   }

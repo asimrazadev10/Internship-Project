@@ -13,3 +13,17 @@
  * is possible; the mirror names this file as its source.
  */
 export const MESSAGE_CONTENT_MAX_LENGTH = 4000;
+
+/**
+ * Hard cap on rows returned by message search.
+ *
+ * Search is the only message-list endpoint with no cursor pagination, so this is the single thing
+ * standing between a one-character query and selecting a whole group's history into memory. The
+ * number is arbitrary but the ceiling is not — if search ever needs to page, this is what it
+ * replaces.
+ */
+export const SEARCH_RESULT_LIMIT = 50;
+
+/** Bounds on the search query itself, enforced by SearchMessagesDto and mirrored by the UI. */
+export const SEARCH_QUERY_MIN_LENGTH = 1;
+export const SEARCH_QUERY_MAX_LENGTH = 100;

@@ -4,7 +4,18 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 
 import { NoMatchesMark } from "@/components/ui/illustrations";
+import { SEARCH_MAX_QUERY_LENGTH } from "@/lib/api-limits";
 import { searchMessages } from "@/lib/api/messages";
+
+/** Wait this long after the last keystroke before querying — directly sets request volume. */
+const SEARCH_DEBOUNCE_MS = 300;
+
+/**
+ * Below this, the dropdown stays closed and no request is made. A UI threshold, not a backend one:
+ * the API accepts a 1-char query, but a single letter matches most of a history and is never a
+ * useful result set.
+ */
+const SEARCH_MIN_QUERY_LENGTH = 2;
 
 function useDebounced<T>(value: T, ms: number): T {
   const [v, setV] = useState(value);
@@ -27,8 +38,8 @@ function formatWhen(iso: string): string {
 /** A search box that shows matching messages in a dropdown once the query is at least 2 chars. */
 export function MessageSearch({ groupId }: { groupId: string }) {
   const [q, setQ] = useState("");
-  const debounced = useDebounced(q.trim(), 300);
-  const active = debounced.length >= 2;
+  const debounced = useDebounced(q.trim(), SEARCH_DEBOUNCE_MS);
+  const active = debounced.length >= SEARCH_MIN_QUERY_LENGTH;
 
   const { data: results = [], isFetching } = useQuery({
     queryKey: ["messages", groupId, "search", debounced],
@@ -44,6 +55,7 @@ export function MessageSearch({ groupId }: { groupId: string }) {
         onChange={(e) => setQ(e.target.value)}
         placeholder="Search messages…"
         aria-label="Search messages"
+        maxLength={SEARCH_MAX_QUERY_LENGTH}
         className="w-full rounded-full border border-line bg-surface px-4 py-1.5 text-sm text-ink outline-none placeholder:text-muted/70 focus:border-brand focus:ring-2 focus:ring-brand/25"
       />
       {active && (
