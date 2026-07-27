@@ -3,15 +3,19 @@ import { ConfigService } from '@nestjs/config';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
 import { generateText } from 'ai';
 
-const SYSTEM_PROMPT =
-  'You summarize a group chat from the last day. Produce a concise digest (2-4 sentences) ' +
-  'covering the key topics, any decisions, and open questions or action items. ' +
-  'Be neutral and factual. If there is nothing substantive, say so briefly.';
+import {
+  SUMMARY_SYSTEM_PROMPT,
+  summaryUserPrompt,
+  transcriptLine,
+} from './ai.constants';
 
 /**
  * Thin wrapper over the Vercel AI SDK's Google provider (free AI Studio / Generative Language API).
  * The vendor lives behind this one method so the job never touches the SDK directly, and tests mock
  * `ai`/`@ai-sdk/google` instead of calling the network.
+ *
+ * What the model is ASKED is deliberately not here — the prompts live in ai.constants.ts, so this
+ * file is only about how the call is made, not about what the product says.
  */
 @Injectable()
 export class AiSummaryService {
@@ -28,11 +32,13 @@ export class AiSummaryService {
   async summarize(
     messages: { sender: string; content: string }[],
   ): Promise<string> {
-    const transcript = messages.map((m) => `${m.sender}: ${m.content}`).join('\n');
+    const transcript = messages
+      .map((m) => transcriptLine(m.sender, m.content))
+      .join('\n');
     const { text } = await generateText({
       model: this.google(this.model),
-      system: SYSTEM_PROMPT,
-      prompt: `Summarize this conversation:\n\n${transcript}`,
+      system: SUMMARY_SYSTEM_PROMPT,
+      prompt: summaryUserPrompt(transcript),
     });
     return text.trim();
   }

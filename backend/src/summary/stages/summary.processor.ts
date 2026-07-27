@@ -2,6 +2,7 @@ import { Logger } from '@nestjs/common';
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 
+import { TRANSCRIPT_UNKNOWN_SENDER } from '../../ai/ai.constants';
 import { MessagesService } from '../../messages/messages.service';
 import {
   SUMMARY_QUEUE,
@@ -63,7 +64,7 @@ export class SummaryProcessor extends WorkerHost {
     if (rows.length === 0) return { skipped: true, reason: 'empty' };
 
     const transcript = rows.map((r) => ({
-      sender: r.sender?.name ?? 'Unknown',
+      sender: r.sender?.name ?? TRANSCRIPT_UNKNOWN_SENDER,
       content: r.content,
     }));
     return { skipped: false, groupId, transcript };

@@ -2,6 +2,7 @@ import { Logger } from '@nestjs/common';
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 
+import { AI_RATE_LIMIT } from '../../ai/ai.constants';
 import { AiSummaryService } from '../../ai/ai-summary.service';
 import {
   AI_QUEUE,
@@ -22,7 +23,7 @@ import type { FetchResult, GenerateResult } from './stage.types';
  */
 @Processor(AI_QUEUE, {
   concurrency: concurrencyFor('AI'),
-  limiter: { max: 10, duration: 60_000 },
+  limiter: { max: AI_RATE_LIMIT.max, duration: AI_RATE_LIMIT.durationMs },
 })
 export class GenerateProcessor extends WorkerHost {
   private readonly logger = new Logger(GenerateProcessor.name);
