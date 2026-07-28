@@ -25,6 +25,7 @@ import { ResponseMessage } from '../common/decorators/response-message.decorator
 import { GroupMemberGuard } from './group-member.guard';
 import { ParseUuidPipe } from '../common/pipes/parse-uuid.pipe';
 import { CreateGroupDto } from './dto/create-group.dto';
+import { TransferOwnershipDto } from './dto/transfer-ownership.dto';
 import { GroupsService } from './groups.service';
 
 /**
@@ -78,5 +79,30 @@ export class GroupsController {
     @Param('id', ParseUuidPipe) id: string,
   ) {
     return this.groupsService.markRead(userId, id);
+  }
+
+  /** Leave the group. Members only, so the guard also rejects a non-member with 403. */
+  @Post(':id/leave')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(GroupMemberGuard)
+  @ResponseMessage('Left group')
+  leave(
+    @CurrentUser('userId') userId: string,
+    @Param('id', ParseUuidPipe) id: string,
+  ) {
+    return this.groupsService.leave(userId, id);
+  }
+
+  /** Hand ownership to another member. The owner-only rule lives in the service transaction. */
+  @Post(':id/transfer-ownership')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(GroupMemberGuard)
+  @ResponseMessage('Ownership transferred')
+  transferOwnership(
+    @CurrentUser('userId') userId: string,
+    @Param('id', ParseUuidPipe) id: string,
+    @Body() dto: TransferOwnershipDto,
+  ) {
+    return this.groupsService.transferOwnership(userId, id, dto.userId);
   }
 }
