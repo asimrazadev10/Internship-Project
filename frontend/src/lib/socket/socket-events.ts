@@ -27,6 +27,8 @@ export const SERVER_EVENTS = {
   NEW_MESSAGE: "new_message",
   MESSAGE_UPDATED: "message_updated",
   MEMBER_JOINED: "member_joined",
+  MEMBER_LEFT: "member_left",
+  OWNER_CHANGED: "owner_changed",
   REACTION_UPDATED: "reaction_updated",
   READ_RECEIPT: "read_receipt",
   USER_TYPING: "user_typing",

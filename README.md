@@ -179,6 +179,8 @@ answering rather than refusing.
 | GET | `/groups` | Groups the caller belongs to |
 | GET | `/groups/:id` | Group detail + members — **members only** |
 | POST | `/groups/:id/join` | Join a group (see model below) |
+| POST | `/groups/:id/leave` | Leave a group — **members only** (see ownership model below) |
+| POST | `/groups/:id/transfer-ownership` | Hand ownership to another member. Body `{ userId }` — **owner only** |
 | POST | `/groups/:id/messages` | Post a message — **members only** |
 | GET | `/groups/:id/messages?limit=&cursor=` | History, newest first — **members only** |
 | POST | `/groups/:id/messages/upload` | Attach a file (multipart) — **members only** |
@@ -189,6 +191,31 @@ answering rather than refusing.
 Group ids are unguessable UUIDv7 values, so the id acts as a weak capability token — you share
 it out of band. A production alternative (invite tokens with expiry) is the natural next step;
 it is intentionally out of scope for Phase 1.
+
+### Leaving and ownership
+
+A group can never be left ownerless, so what `POST /groups/:id/leave` does depends on who calls it:
+
+| Caller | Others remain? | Result |
+|---|---|---|
+| Member | — | their membership row is deleted |
+| Owner | yes | the **longest-standing** remaining member is promoted to OWNER, then the caller leaves |
+| Owner | no | the **group is deleted**, and its messages cascade with it |
+
+The response says which happened: `{ left, groupDeleted, newOwnerId }`.
+
+`POST /groups/:id/transfer-ownership` hands ownership over deliberately while both parties stay
+in the group. The owner check runs *inside* the database transaction rather than in a guard —
+a guard runs before the transaction opens, so two concurrent transfers could both pass it and
+leave the group with two owners.
+
+`Group.createdBy` is never reassigned by either operation. It records who *created* the group and
+is half of the `@@unique([createdBy, name])` constraint; moving it could collide with a group the
+new owner already has under that name.
+
+Leaving also evicts that user's live sockets from the group's room. Sockets join on `join_group`
+and nothing else removes them, so without this a departed member would keep receiving messages
+until they happened to disconnect.
 
 ### Pagination
 

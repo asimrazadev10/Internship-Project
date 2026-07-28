@@ -27,6 +27,33 @@ export async function joinGroup(groupId: string): Promise<GroupSummary> {
   return data.data;
 }
 
+export interface LeaveResult {
+  left: true;
+  // True when the caller was the last member and the group was deleted with its messages.
+  groupDeleted: boolean;
+  // Set when the caller was the owner and someone was promoted in their place.
+  newOwnerId: string | null;
+}
+
+/** Leave a group. The server decides whether that also promotes a successor or deletes the group. */
+export async function leaveGroup(groupId: string): Promise<LeaveResult> {
+  const { data } = await api.post<ApiSuccess<LeaveResult>>(
+    `/groups/${groupId}/leave`,
+  );
+  return data.data;
+}
+
+/** Hand ownership to another member of the same group. Owner only; the backend enforces it. */
+export async function transferOwnership(
+  groupId: string,
+  userId: string,
+): Promise<{ previousOwnerId: string; newOwnerId: string }> {
+  const { data } = await api.post<
+    ApiSuccess<{ previousOwnerId: string; newOwnerId: string }>
+  >(`/groups/${groupId}/transfer-ownership`, { userId });
+  return data.data;
+}
+
 /** Mark the group read up to now (for read receipts). Returns the new lastReadAt. */
 export async function markRead(
   groupId: string,

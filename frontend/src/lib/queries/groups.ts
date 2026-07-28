@@ -59,3 +59,30 @@ export function useJoinGroup() {
       queryClient.invalidateQueries({ queryKey: groupKeys.all, exact: true }),
   });
 }
+
+/** Leave a group, then refetch the list so it disappears from the sidebar. */
+export function useLeaveGroup(id: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => groupsApi.leaveGroup(id),
+    onSuccess: () => {
+      // The detail is REMOVED rather than invalidated: refetching a group you just left would
+      // 403, and refetching one that was deleted would 404.
+      queryClient.removeQueries({ queryKey: groupKeys.detail(id) });
+      void queryClient.invalidateQueries({
+        queryKey: groupKeys.all,
+        exact: true,
+      });
+    },
+  });
+}
+
+/** Transfer ownership. The role swap arrives over the socket, so only the list needs refetching. */
+export function useTransferOwnership(id: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (userId: string) => groupsApi.transferOwnership(id, userId),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: groupKeys.all, exact: true }),
+  });
+}

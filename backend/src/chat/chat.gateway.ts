@@ -27,9 +27,16 @@ import {
 import { Server } from 'socket.io';
 
 import { NOT_A_MEMBER_MESSAGE } from '../common/error-messages';
-import { MEMBER_JOINED, READ_MARKED } from '../groups/group-events';
+import {
+  MEMBER_JOINED,
+  MEMBER_LEFT,
+  OWNER_CHANGED,
+  READ_MARKED,
+} from '../groups/group-events';
 import type {
   MemberJoinedPayload,
+  MemberLeftPayload,
+  OwnerChangedPayload,
   ReadMarkedPayload,
 } from '../groups/group-events';
 import { GroupsService } from '../groups/groups.service';
@@ -286,6 +293,41 @@ export class ChatGateway
     this.server
       .to(roomFor(payload.groupId))
       .emit(SERVER_EVENTS.MEMBER_JOINED, payload);
+  }
+
+  /**
+   * A member left — tell the room, then force that user's sockets out of it.
+   *
+   * The eviction is the load-bearing half. Sockets join `group:<id>` on join_group and nothing
+   * else ever removes them, so a user who left over HTTP would keep receiving every message in
+   * the group until they happened to disconnect. Membership is checked once, at join time.
+   *
+   * fetchSockets() spans nodes under the Redis adapter, so this holds multi-instance — the same
+   * reason PresenceService uses it instead of a local Map.
+   */
+  @OnEvent(MEMBER_LEFT)
+  async broadcastMemberLeft(payload: MemberLeftPayload): Promise<void> {
+    const room = roomFor(payload.groupId);
+    this.server.to(room).emit(SERVER_EVENTS.MEMBER_LEFT, payload);
+
+    const sockets = await this.server.in(room).fetchSockets();
+    for (const s of sockets) {
+      if ((s.data as AuthData)?.userId === payload.userId) {
+        // Not awaited: a RemoteSocket's leave() returns void, unlike a local Socket's promise —
+        // the adapter dispatches it to whichever node owns the socket.
+        s.leave(room);
+      }
+    }
+    // Presence still counts the departed socket until it has left, so refresh after.
+    await this.presence.broadcast(this.server, payload.groupId);
+  }
+
+  /** Ownership moved — push both ids so clients can flip the two roles in place. */
+  @OnEvent(OWNER_CHANGED)
+  broadcastOwnerChanged(payload: OwnerChangedPayload): void {
+    this.server
+      .to(roomFor(payload.groupId))
+      .emit(SERVER_EVENTS.OWNER_CHANGED, payload);
   }
 
   /** A message's reactions changed — push the new set to everyone viewing the group. */

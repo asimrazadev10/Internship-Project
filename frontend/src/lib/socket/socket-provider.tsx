@@ -85,6 +85,53 @@ export function SocketProvider({ children }: { children: React.ReactNode }) {
       },
     );
 
+    // A member left — drop them from the cached detail so the panel and count update live.
+    nextSocket.on(
+      SERVER_EVENTS.MEMBER_LEFT,
+      (payload: { groupId: string; userId: string }) => {
+        queryClient.setQueryData<GroupDetail>(
+          groupKeys.detail(payload.groupId),
+          (old) =>
+            old
+              ? {
+                  ...old,
+                  members: old.members.filter(
+                    (m) => m.user.id !== payload.userId,
+                  ),
+                }
+              : old,
+        );
+        queryClient.invalidateQueries({ queryKey: groupKeys.all, exact: true });
+      },
+    );
+
+    // Ownership moved — flip exactly two roles in place rather than refetching the group.
+    nextSocket.on(
+      SERVER_EVENTS.OWNER_CHANGED,
+      (payload: {
+        groupId: string;
+        previousOwnerId: string;
+        newOwnerId: string;
+      }) => {
+        queryClient.setQueryData<GroupDetail>(
+          groupKeys.detail(payload.groupId),
+          (old) =>
+            old
+              ? {
+                  ...old,
+                  members: old.members.map((m) =>
+                    m.user.id === payload.newOwnerId
+                      ? { ...m, role: "OWNER" as const }
+                      : m.user.id === payload.previousOwnerId
+                        ? { ...m, role: "MEMBER" as const }
+                        : m,
+                  ),
+                }
+              : old,
+        );
+      },
+    );
+
     // A message's reactions changed — patch that message wherever it lives (live buffer or a
     // loaded history page), so counts update without a refetch.
     nextSocket.on(
