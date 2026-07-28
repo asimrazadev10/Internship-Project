@@ -1,19 +1,16 @@
 /**
  * HOW THIS FILE WORKS
- *
- *   1. Load .env into process.env — before any other import is evaluated.
- *   2. Build the SchedulerWorkerModule graph as a context with NO HTTP server.
- *   3. Register shutdown hooks so an in-flight tick finishes instead of being dropped.
+ *   1. Load .env before anything else is imported.
+ *   2. Build the SchedulerWorkerModule graph as a context with no HTTP server.
+ *   3. Register shutdown hooks so an in-flight tick finishes on SIGTERM.
  *   4. Log the readiness line for scheduler-queue.
  *
- * The clock of the whole system. Unlike the other three workers this one does not process a stage
- * of the Flow — on boot its processor registers two repeatable jobs (the summary tick and the
- * refresh-token purge), and on each tick it fans out one Flow per active group. Stop this process
- * and no summaries are ever scheduled, though the other workers keep draining what already exists.
+ * The clock of the system: it creates flows rather than processing a stage. Stop this process and
+ * no summaries are ever scheduled.
  */
 
-// Step 1. Load .env BEFORE the module graph: the @Processor concurrency option reads process.env
-// at import time, before ConfigModule has had a chance to load the file.
+// Load .env BEFORE the module graph so the @Processor concurrency option (which reads process.env
+// at import time, before ConfigModule loads .env) sees the configured value.
 import 'dotenv/config';
 
 import { Logger } from '@nestjs/common';
@@ -22,16 +19,13 @@ import { NestFactory } from '@nestjs/core';
 import { SchedulerWorkerModule } from './scheduler-worker.module';
 
 async function bootstrap(): Promise<void> {
-  // Step 2. createApplicationContext — NOT create() — resolves providers with no HTTP adapter.
-  // Building the context is also what triggers SchedulerProcessor.onApplicationBootstrap, which
-  // is where the two repeatable schedulers get registered.
+  // Step 2. Building the context also fires onApplicationBootstrap, which registers the schedulers.
   const ctx = await NestFactory.createApplicationContext(SchedulerWorkerModule);
-  // Step 3. Lets BullMQ finish the tick it is holding on SIGTERM rather than abandoning a
-  // half-finished fan-out.
+  // Step 3. Lets a tick finish rather than abandoning a half-finished fan-out.
   ctx.enableShutdownHooks();
-  // Step 4. Readiness line; the scheduler registration lines follow it in the log.
+  // Step 4. The scheduler registration lines follow this one in the log.
   Logger.log('scheduler-worker up (queue: scheduler-queue)', 'Worker');
 }
 
-// Kick off the async bootstrap. `void` marks the floating promise as deliberate for eslint.
+// `void` marks the floating promise as deliberate for eslint.
 void bootstrap();

@@ -1,13 +1,10 @@
 /**
  * HOW THIS FILE WORKS
- *
  *   1. Take a `since` timestamp — the start of the summary window.
- *   2. Ask Postgres for every group having at least one USER message at or after it.
- *   3. Select only the id, because the caller only needs something to build a Flow around.
+ *   2. Ask Postgres for every group with at least one USER message at or after it.
+ *   3. Select only the id, which is all the scheduler needs to build a Flow.
  *
- * The single query behind the scheduler's fan-out. It runs in the scheduler-worker process and
- * decides how many Flows a tick creates: no active groups means no work, which is why a quiet
- * system costs nothing.
+ * The single query behind the scheduler's fan-out; it decides how many Flows a tick creates.
  */
 import { Injectable } from '@nestjs/common';
 import { MessageType } from '@prisma/client';
@@ -23,16 +20,13 @@ export class SummaryService {
   findActiveGroups(since: Date): Promise<{ id: string }[]> {
     return this.prisma.group.findMany({
       where: {
-        // Step 2. `some` compiles to an EXISTS subquery, so Postgres stops at the first matching
-        // message per group instead of counting them all.
+        // Step 2. `some` compiles to EXISTS, so Postgres stops at the first match per group.
         messages: {
-          // type: USER excludes AI_SUMMARY deliberately — otherwise yesterday's summary would
-          // itself count as activity and keep a dead group alive forever.
+          // USER only: otherwise yesterday's AI_SUMMARY would keep a dead group alive forever.
           some: { type: MessageType.USER, createdAt: { gte: since } },
         },
       },
-      // Step 3. Id only. The scheduler passes it straight into buildSummaryFlow; fetching names
-      // or timestamps here would be rows over the wire that nothing reads.
+      // Step 3. Id only — anything else would be rows over the wire that nothing reads.
       select: { id: true },
     });
   }

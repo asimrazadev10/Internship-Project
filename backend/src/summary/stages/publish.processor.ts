@@ -1,15 +1,12 @@
 /**
  * HOW THIS FILE WORKS
- *
  *   1. BullMQ hands this processor a publish-summary job from notification-queue.
- *   2. Read the return value of its ONE child (save-summary) via getChildrenValues().
- *   3. If the child skipped, report published:false and stop — there is no row to broadcast.
- *   4. Otherwise emit the persisted row to the group's Socket.IO room over the Redis emitter.
- *   5. Return published:true, which the group-summary root reads to close out the flow.
+ *   2. Read the save-summary child's return value.
+ *   3. If it skipped, report published:false — there is no row to broadcast.
+ *   4. Otherwise emit the persisted row to the group's room over the Redis emitter.
+ *   5. Return published:true for the group-summary root.
  *
- * Stage 4 of 5, and the last one that does work. Its child is save-summary (summary-queue); its
- * parent is the group-summary root. This process has no Socket.IO server — see the docblock below
- * for how it still reaches connected browsers.
+ * Stage 4 of 5, and the last that does work. Child: save-summary. Parent: group-summary.
  */
 import { Logger } from '@nestjs/common';
 import { Processor, WorkerHost } from '@nestjs/bullmq';
@@ -29,8 +26,7 @@ import type { SaveResult } from './stage.types';
  * refetch and find it — a dropped broadcast is recoverable, never data loss.
  */
 @Processor(NOTIFICATION_QUEUE, {
-  // Lowest of the four (default 3): a broadcast is a single Redis publish, so there is nothing to
-  // gain from running many at once, and no external rate limit to respect.
+  // Lowest of the four (default 3): a broadcast is one Redis publish, with no rate limit to respect.
   concurrency: concurrencyFor('NOTIFICATION'),
 })
 export class PublishProcessor extends WorkerHost {
@@ -45,19 +41,16 @@ export class PublishProcessor extends WorkerHost {
   async process(
     job: Job<{ groupId: string }>,
   ): Promise<{ published: boolean }> {
-    // Step 2. One child, so firstChildValue unwraps the map to the single SaveResult.
+    // Step 2. One child, so firstChildValue unwraps the map to a single SaveResult.
     const child = firstChildValue<SaveResult>(await job.getChildrenValues());
-    // Step 3. A skip anywhere upstream lands here as `skipped`, and there is simply nothing to
-    // send. Note this is a normal completion, not a failure — the flow still succeeds.
+    // Step 3. A normal completion, not a failure — the flow still succeeds.
     if (!child || child.skipped) return { published: false };
 
-    // Step 4. Fire-and-forget: the emitter publishes to Redis and returns. Deliberately NOT
-    // awaited or wrapped in try/catch — see the docblock on ordering. The message is already
-    // persisted, so the worst outcome here is a missed live update, never lost data.
+    // Step 4. Fire-and-forget; the row is already committed, so a lost emit is recoverable.
     this.publisher.broadcastNewMessage(child.message);
-    // The last line of a successful run — seeing this means the summary reached the room.
+    // The last line of a successful run.
     this.logger.log(`group ${child.message.groupId}: summary broadcast`);
-    // Step 5. The root job reads this to report whether the chain ended in a broadcast.
+    // Step 5. The root reads this to report whether the chain ended in a broadcast.
     return { published: true };
   }
 }
