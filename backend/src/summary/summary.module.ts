@@ -1,3 +1,13 @@
+/**
+ * HOW THIS FILE WORKS
+ *
+ *   1. Register scheduler-queue so the controller can inject it and add jobs.
+ *   2. Declare SummaryController, the POST /summaries/run route.
+ *
+ * Deliberately tiny. Note what is NOT here: no providers, and above all no @Processor. Registering
+ * a queue makes this module a PRODUCER only — the API can enqueue a tick but performs none of the
+ * pipeline work, which all lives in the standalone worker processes under src/workers.
+ */
 import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 
@@ -10,7 +20,10 @@ import { SummaryController } from './summary.controller';
  * in the standalone worker processes under src/workers, so no @Processor is wired here.
  */
 @Module({
+  // Step 1. registerQueue gives @InjectQueue something to resolve. The BullMQ root connection
+  // itself is configured once in AppModule, not repeated here.
   imports: [BullModule.registerQueue({ name: SCHEDULER_QUEUE })],
+  // Step 2. Controllers, not providers — the only thing this module contributes is one route.
   controllers: [SummaryController],
 })
 export class SummaryModule {}
