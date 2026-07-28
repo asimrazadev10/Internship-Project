@@ -1,3 +1,10 @@
+/**
+ * HOW THIS FILE WORKS
+ *   1. IS_PUBLIC_KEY — the metadata key JwtAuthGuard reads.
+ *   2. Public() — sets that key to true on a route or controller.
+ *
+ * Protection is the default; this is the visible opt-out.
+ */
 import { SetMetadata } from '@nestjs/common';
 
 /**
@@ -11,6 +18,7 @@ import { SetMetadata } from '@nestjs/common';
  * new route, it ends up locked, not exposed. The failure mode is a 401 someone reports, not a
  * silent hole nobody notices.
  */
+// Exported so the guard reads the same key this sets — a literal in both places could drift.
 export const IS_PUBLIC_KEY = 'isPublic';
 
 export const Public = () => SetMetadata(IS_PUBLIC_KEY, true);

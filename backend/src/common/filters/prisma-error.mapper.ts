@@ -1,3 +1,13 @@
+/**
+ * HOW THIS FILE WORKS
+ *   1. Switch on Prisma's error code.
+ *   2. P2002 (unique violation) -> 409, naming the offending columns when Prisma reports them.
+ *   3. P2025 (record not found) -> 404.
+ *   4. P2003 (foreign key) -> 400, since the CALLER supplied the bad reference.
+ *   5. Anything else -> 500 with a generic message.
+ *
+ * A pure function, so it is unit-testable and reusable outside an HTTP filter.
+ */
 import { HttpStatus } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 
@@ -25,6 +35,8 @@ export function mapPrismaError(
     // Unique constraint violation — e.g. registering an email that already exists, or
     // joining a group the user is already a member of (@@unique([groupId, userId])).
     case 'P2002': {
+      // meta.target is optional, hence the fallback message below. Note callers that want a
+      // friendlier message (GroupsService) catch P2002 themselves before reaching here.
       const target = (error.meta?.target as string[] | undefined)?.join(', ');
       return {
         status: HttpStatus.CONFLICT,
@@ -54,6 +66,7 @@ export function mapPrismaError(
       };
 
     default:
+      // Step 5. Deliberately generic — an unmapped database error must not leak schema detail.
       return {
         status: HttpStatus.INTERNAL_SERVER_ERROR,
         code: ErrorCode.INTERNAL_ERROR,

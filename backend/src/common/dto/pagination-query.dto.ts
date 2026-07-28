@@ -1,3 +1,8 @@
+/**
+ * HOW THIS FILE WORKS
+ *   1. Convert `limit` from its query-string form to a number, then bound it.
+ *   2. Accept an optional opaque `cursor`; its absence means "first page".
+ */
 import { Type } from 'class-transformer';
 import { IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 
@@ -19,8 +24,10 @@ export class PaginationQueryDto {
   @IsInt({ message: 'limit must be an integer' })
   @Min(1)
   @Max(MAX_PAGE_SIZE)
+  // The default applies when the param is absent entirely.
   limit: number = DEFAULT_PAGE_SIZE;
 
+  // Step 2. No format validation — decodeCursor does that, and 400s on a malformed value.
   @IsOptional()
   @IsString()
   cursor?: string;

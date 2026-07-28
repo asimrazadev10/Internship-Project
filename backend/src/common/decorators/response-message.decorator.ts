@@ -1,5 +1,11 @@
+/**
+ * HOW THIS FILE WORKS
+ *   1. RESPONSE_MESSAGE_KEY — the metadata key ResponseInterceptor reads.
+ *   2. ResponseMessage() — attaches a success message to a handler as metadata.
+ */
 import { SetMetadata } from '@nestjs/common';
 
+// Namespaced with a colon so it cannot collide with another library's metadata key.
 export const RESPONSE_MESSAGE_KEY = 'response:message';
 
 /**

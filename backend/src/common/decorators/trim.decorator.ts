@@ -1,3 +1,8 @@
+/**
+ * HOW THIS FILE WORKS
+ *   1. Wrap class-transformer's @Transform so it runs before any validator on the property.
+ *   2. Trim strings; pass anything else through untouched.
+ */
 import { Transform, TransformFnParams } from 'class-transformer';
 
 /**
@@ -15,5 +20,6 @@ import { Transform, TransformFnParams } from 'class-transformer';
  */
 export const Trim = (): PropertyDecorator =>
   Transform(({ value }: TransformFnParams): unknown =>
+    // Step 2. The typeof check is what keeps a wrong type reportable by @IsString().
     typeof value === 'string' ? value.trim() : value,
   );

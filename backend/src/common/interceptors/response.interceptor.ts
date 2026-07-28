@@ -1,3 +1,12 @@
+/**
+ * HOW THIS FILE WORKS
+ *   1. Read any @ResponseMessage() metadata for this handler.
+ *   2. Map the handler's return value into the success envelope.
+ *   3. A { data, meta } return lifts meta to the envelope's top level.
+ *   4. Anything else becomes { success, data }, with undefined normalised to null.
+ *
+ * Success path only — errors bypass interceptors entirely and are shaped by the filters.
+ */
 import {
   CallHandler,
   ExecutionContext,
@@ -29,6 +38,7 @@ export class ResponseInterceptor<T> implements NestInterceptor<
     context: ExecutionContext,
     next: CallHandler<T>,
   ): Observable<SuccessResponse<unknown>> {
+    // Step 1. Handler first, then controller — same precedence rule as the auth guard.
     const message = this.reflector.getAllAndOverride<string | undefined>(
       RESPONSE_MESSAGE_KEY,
       [context.getHandler(), context.getClass()],
@@ -42,6 +52,7 @@ export class ResponseInterceptor<T> implements NestInterceptor<
           return {
             success: true as const,
             data: payload.data,
+            // Conditional spread, so the key is absent rather than set to undefined.
             ...(message ? { message } : {}),
             meta: payload.meta,
           };
