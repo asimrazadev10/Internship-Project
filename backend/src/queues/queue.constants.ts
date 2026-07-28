@@ -1,3 +1,16 @@
+/**
+ * HOW THIS FILE WORKS
+ *   1. Name the four queues and the FlowProducer.
+ *   2. Name the two scheduler ids and the six job types.
+ *   3. stageJobId() builds a deterministic id per stage, which is what dedupes a re-fired flow.
+ *   4. jobOpts() sets the shared retry/backoff/cleanup policy for every flow job.
+ *   5. buildSummaryFlow() assembles one group's five-stage tree.
+ *   6. intFromEnv / WORKER_CONCURRENCY / concurrencyFor read tuning knobs before DI exists.
+ *   7. firstChildValue() unwraps a stage's single child return value.
+ *
+ * Every string here is referenced from at least two processes, so a typo in one of them would
+ * produce a worker that silently drains nothing.
+ */
 import { FlowJob } from 'bullmq';
 
 // Four queues (matching the assignment): a scheduler queue plus one per work type.
@@ -42,6 +55,7 @@ export const JOB_PUBLISH = 'publish-summary';
  * BullMQ dedupes instead of summarizing twice. `hasSummarySince` (in the fetch stage) is the
  * DB-level guarantee behind this best-effort queue-level dedup.
  */
+// Step 3. bucketStart is constant within a window, so the id is stable across re-fires.
 export const stageJobId = (
   stage: string,
   groupId: string,
@@ -51,9 +65,13 @@ export const stageJobId = (
 // Shared per-job policy: bounded retries with exponential backoff; keep the queue tidy.
 const jobOpts = (jobId: string) => ({
   jobId,
+  // Step 4. Three tries, then the job fails for good.
   attempts: 3,
+  // Doubling delay from 2s, so a struggling dependency is not hammered.
   backoff: { type: 'exponential' as const, delay: 2000 },
+  // Success deletes the job — which is why a healthy pipeline shows empty queues.
   removeOnComplete: true,
+  // Keep the last 100 failures so failedReason is still readable afterwards.
   removeOnFail: 100,
 });
 
@@ -76,21 +94,25 @@ export const buildSummaryFlow = (
   since: Date,
   bucketStart: number,
 ): FlowJob => ({
+  // Step 5. The root. Runs last, after every descendant has succeeded.
   name: JOB_GROUP_SUMMARY,
   queueName: SUMMARY_QUEUE,
   data: { groupId },
   opts: jobOpts(stageJobId(JOB_GROUP_SUMMARY, groupId, bucketStart)),
   children: [
     {
+      // Stage 4 — broadcast. Note the queue changes, so this runs in another process.
       name: JOB_PUBLISH,
       queueName: NOTIFICATION_QUEUE,
       data: { groupId },
       opts: {
         ...jobOpts(stageJobId(JOB_PUBLISH, groupId, bucketStart)),
+        // Bubbles failure to the root instead of parking it in waiting-children forever.
         failParentOnFailure: true,
       },
       children: [
         {
+          // Stage 3 — persist. Back on summary-queue.
           name: JOB_SAVE,
           queueName: SUMMARY_QUEUE,
           data: { groupId },
@@ -100,6 +122,7 @@ export const buildSummaryFlow = (
           },
           children: [
             {
+              // Stage 2 — the Gemini call, isolated on its own queue and process.
               name: JOB_GENERATE,
               queueName: AI_QUEUE,
               data: { groupId },
@@ -109,8 +132,10 @@ export const buildSummaryFlow = (
               },
               children: [
                 {
+                  // Stage 1 — the leaf, so this is what actually runs first.
                   name: JOB_FETCH,
                   queueName: SUMMARY_QUEUE,
+                  // `since` is serialised to ISO because job data crosses Redis as JSON.
                   data: { groupId, since: since.toISOString() },
                   opts: {
                     ...jobOpts(stageJobId(JOB_FETCH, groupId, bucketStart)),
@@ -136,8 +161,11 @@ export const buildSummaryFlow = (
  * escape hatch — the body was always generic.
  */
 export const intFromEnv = (key: string, fallback: number): number => {
+  // Step 6. Reads process.env directly — ConfigService does not exist this early.
   const raw = process.env[key];
+  // Number('') is 0 and Number(undefined) is NaN, both rejected by the guard below.
   const n = raw !== undefined ? Number(raw) : NaN;
+  // Falls back on anything non-integer or non-positive — including a key that does not exist.
   return Number.isInteger(n) && n > 0 ? n : fallback;
 };
 
@@ -156,9 +184,13 @@ export const intFromEnv = (key: string, fallback: number): number => {
  * exactly one definition each.
  */
 export const WORKER_CONCURRENCY = {
+  // 1 — two concurrent ticks would fan out the same groups twice.
   SCHEDULER: { key: 'SCHEDULER_WORKER_CONCURRENCY', default: 1 },
+  // 10 — network-bound and mostly idle, so parallelism is cheap here.
   AI: { key: 'AI_WORKER_CONCURRENCY', default: 10 },
+  // 5 — short DB round-trips, bounded by the Postgres pool.
   SUMMARY: { key: 'SUMMARY_WORKER_CONCURRENCY', default: 5 },
+  // 3 — a broadcast is one Redis publish; there is little to gain from more.
   NOTIFICATION: { key: 'NOTIFICATION_WORKER_CONCURRENCY', default: 3 },
 } as const;
 
@@ -166,6 +198,7 @@ export const WORKER_CONCURRENCY = {
 export const concurrencyFor = (
   worker: keyof typeof WORKER_CONCURRENCY,
 ): number => {
+  // Keyed lookup, so the decorators cannot name an env var the schema does not validate.
   const { key, default: fallback } = WORKER_CONCURRENCY[worker];
   return intFromEnv(key, fallback);
 };
@@ -174,6 +207,8 @@ export const concurrencyFor = (
 export const firstChildValue = <T>(
   values: Record<string, T>,
 ): T | undefined => {
+  // Step 7. getChildrenValues() keys results by child job id, which callers do not know.
   const all = Object.values(values);
+  // undefined rather than a throw, so callers handle a missing child as a skip.
   return all.length > 0 ? all[0] : undefined;
 };
