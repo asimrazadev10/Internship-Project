@@ -1,3 +1,14 @@
+/**
+ * HOW THIS FILE WORKS
+ *   1. EnvironmentVariables declares every setting as a decorated property.
+ *   2. A property with an initialiser has a default; one with `!` is required.
+ *   3. @Type(() => Number) converts before numeric rules run — env vars arrive as strings.
+ *   4. validateEnv() builds an instance from process.env and validates it synchronously.
+ *   5. Any error throws, so a misconfigured process dies at boot rather than at first request.
+ *
+ * Grouped by concern in the order the phases introduced them: runtime, database, JWT, Google,
+ * Redis, sockets, AI, schedules, worker concurrency, storage.
+ */
 import { plainToInstance, Type } from 'class-transformer';
 import {
   IsEnum,
@@ -37,6 +48,7 @@ export enum NodeEnv {
 }
 
 export class EnvironmentVariables {
+  // ---- Runtime ----
   @IsEnum(NodeEnv, {
     message: `NODE_ENV must be one of: ${Object.values(NodeEnv).join(', ')}`,
   })
@@ -49,9 +61,14 @@ export class EnvironmentVariables {
   @Max(65535)
   PORT = 3000;
 
+  // ---- Database ----
+  // No default and no format check: Prisma parses the URL and reports a better error than a
+  // regex here would.
   @IsString()
   @IsNotEmpty({ message: 'DATABASE_URL is required' })
   DATABASE_URL!: string;
+
+  // ---- JWT ----
 
   // The signing secret for access tokens. Required with no default — a fallback secret in code is
   // the same as no secret at all.
@@ -100,6 +117,7 @@ export class EnvironmentVariables {
   @IsNotEmpty({ message: 'GOOGLE_CLIENT_ID is required' })
   GOOGLE_CLIENT_ID!: string;
 
+  // ---- Redis ----
   // Redis — Socket.IO adapter (Phase 3) and BullMQ (Phase 4).
   @IsString()
   @IsNotEmpty({ message: 'REDIS_HOST is required' })
@@ -121,6 +139,7 @@ export class EnvironmentVariables {
   @IsNotEmpty({ message: 'SOCKET_CORS_ORIGIN is required' })
   SOCKET_CORS_ORIGIN: string = 'http://localhost:3001';
 
+  // ---- AI summaries ----
   // Phase 4 — AI daily summaries.
   // Free Google AI Studio key (Generative Language API via @ai-sdk/google, NOT paid Vertex).
   @IsString()
@@ -150,6 +169,7 @@ export class EnvironmentVariables {
   @Min(1000)
   AI_RATE_LIMIT_DURATION_MS: number = AI_RATE_LIMIT.duration.default;
 
+  // ---- Schedules ----
   // Scheduler tick + how far back each summary looks. Default 24h; set small (e.g. 60000) to demo.
   @Type(() => Number)
   @IsInt({ message: 'SUMMARY_INTERVAL_MS must be an integer' })
@@ -176,6 +196,7 @@ export class EnvironmentVariables {
   @Min(0)
   REFRESH_TOKEN_PURGE_GRACE_MS: number = PURGE_GRACE_DEFAULT;
 
+  // ---- Worker concurrency ----
   // Phase 5 — per-worker BullMQ concurrency. Each standalone worker process reads its own knob.
   // Read two ways: the @Processor decorator reads process.env directly (it evaluates before
   // ConfigModule loads .env), and this validation guarantees the same keys are well-formed
@@ -204,6 +225,7 @@ export class EnvironmentVariables {
   NOTIFICATION_WORKER_CONCURRENCY: number =
     WORKER_CONCURRENCY.NOTIFICATION.default;
 
+  // ---- Storage ----
   // Bonus (file uploads) — Supabase Storage. URL and key are optional: without them the service
   // falls back to writing under uploads/ on local disk, so uploads work with no external setup.
   // Only these three are needed because the backend uses the Storage REST API directly (no SDK):
@@ -231,6 +253,8 @@ export function validateEnv(
   // ConfigService. Only the declared properties are validated.
   const config = plainToInstance(EnvironmentVariables, raw);
 
+  // Step 4. Synchronous, because ConfigModule.forRoot's `validate` hook cannot await.
+  // skipMissingProperties: false is what makes an absent required variable an error.
   const errors = validateSync(config, { skipMissingProperties: false });
 
   if (errors.length > 0) {
@@ -241,6 +265,7 @@ export function validateEnv(
       )
       .join('\n');
 
+    // Step 5. Every failure at once, not just the first — so one restart fixes the whole .env.
     throw new Error(`Invalid environment configuration:\n${details}`);
   }
 
