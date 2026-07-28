@@ -1,4 +1,13 @@
 /**
+ * HOW THIS FILE WORKS
+ *   1. Credential shape — email/password/name bounds, plus the one email normaliser.
+ *   2. Refresh-token cryptography — entropy, encoding, hash algorithm, purge grace.
+ *
+ * Two unrelated groups in one file because both are "auth policy": the numbers a reviewer would
+ * want to check are all in one place rather than scattered across DTOs and services.
+ */
+
+/**
  * Credential-shape policy and refresh-token cryptography parameters.
  *
  * Two groups of values, both previously written as bare literals at their use sites.
@@ -29,6 +38,7 @@ export const EMAIL_MAX_LENGTH = 254;
  * case-sensitive per RFC 5321, but no mail provider in practice treats it that way, and users
  * overwhelmingly expect Asim@x.com and asim@x.com to be one account.
  */
+// Takes and returns `unknown` because class-transformer's @Transform passes untyped values.
 export const normalizeEmail = (value: unknown): unknown =>
   typeof value === 'string' ? value.trim().toLowerCase() : value;
 
@@ -41,6 +51,7 @@ export const PASSWORD_MIN_LENGTH = 8;
  */
 export const PASSWORD_MAX_LENGTH = 128;
 
+// 1, not 0, so a name is required; the DTO trims first so whitespace cannot satisfy it.
 export const NAME_MIN_LENGTH = 1;
 export const NAME_MAX_LENGTH = 80;
 
@@ -81,4 +92,5 @@ export const REFRESH_TOKEN_HASH_ALGORITHM = 'sha256' as const;
  * defensive action rather than an attack. This grace keeps recent replays detectable for a week
  * past expiry; revoked-but-unexpired rows are never touched at any age.
  */
+// Seven days, written as a product so the units are readable without a calculator.
 export const REFRESH_TOKEN_PURGE_GRACE_MS = 7 * 24 * 60 * 60 * 1000;

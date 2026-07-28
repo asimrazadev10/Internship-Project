@@ -1,3 +1,8 @@
+/**
+ * HOW THIS FILE WORKS
+ *   1. Normalise the email exactly as RegisterDto does — this is the lookup side of that rule.
+ *   2. Accept any password string up to the max length; no minimum is enforced here.
+ */
 import { Transform } from 'class-transformer';
 import { IsEmail, IsString, MaxLength } from 'class-validator';
 

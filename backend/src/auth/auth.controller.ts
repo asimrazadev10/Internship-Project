@@ -1,3 +1,13 @@
+/**
+ * HOW THIS FILE WORKS
+ *   1. POST /auth/register — create an account, return user + tokens.
+ *   2. POST /auth/login — verify a password, return user + tokens.
+ *   3. POST /auth/refresh — exchange a refresh token for a new pair.
+ *   4. POST /auth/google — exchange a verified Google ID token for a pair.
+ *   5. POST /auth/logout — revoke the whole rotation family. The ONLY guarded route here.
+ *
+ * Maps HTTP to AuthService and nothing else; its only decisions are @Public() and status codes.
+ */
 import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
 
 import { Public } from '../common/decorators/public.decorator';
@@ -18,8 +28,10 @@ import { AuthResult } from './interfaces/auth.types';
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
+  // Step 1. @Public() — you cannot hold a token before you have an account.
   @Public()
   @Post('register')
+  // 201 is left as the default here: registration really does create a resource.
   @ResponseMessage('Registration successful')
   register(@Body() dto: RegisterDto): Promise<AuthResult> {
     return this.authService.register(dto);
@@ -34,6 +46,7 @@ export class AuthController {
     return this.authService.login(dto);
   }
 
+  // Step 3. Public because the access token has usually expired by the time this is called.
   @Public()
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
@@ -42,6 +55,7 @@ export class AuthController {
     return this.authService.refresh(dto.refreshToken);
   }
 
+  // Step 4. The Google ID token is the credential, so no app token exists yet.
   @Public()
   @Post('google')
   @HttpCode(HttpStatus.OK)
@@ -55,11 +69,13 @@ export class AuthController {
    * the global JwtAuthGuard enforces. The refresh token in the body identifies which family to
    * revoke — logout revokes the whole rotation family, not just one token.
    */
+  // Step 5. No @Public(), so the global guard applies — the one guarded route in this controller.
   @Post('logout')
   @HttpCode(HttpStatus.OK)
   @ResponseMessage('Logged out')
   async logout(@Body() dto: RefreshDto): Promise<{ success: boolean }> {
     await this.authService.logout(dto.refreshToken);
+    // A fixed shape rather than the revoked count — the client has no use for the number.
     return { success: true };
   }
 }

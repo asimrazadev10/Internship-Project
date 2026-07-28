@@ -1,3 +1,7 @@
+/**
+ * HOW THIS FILE WORKS
+ *   1. Assert idToken is a non-empty string. GoogleService does the real verification.
+ */
 import { IsString, MinLength } from 'class-validator';
 
 /**
@@ -7,6 +11,7 @@ import { IsString, MinLength } from 'class-validator';
  */
 export class GoogleLoginDto {
   @IsString()
+  // Validating JWT shape here would duplicate — and could disagree with — GoogleService.
   @MinLength(1, { message: 'idToken is required' })
   idToken: string;
 }

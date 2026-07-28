@@ -1,3 +1,10 @@
+/**
+ * HOW THIS FILE WORKS
+ *   1. Provide RefreshTokenPurgeService.
+ *   2. Export it for the scheduler worker.
+ *
+ * No imports: PrismaModule is @Global, and this service needs nothing else.
+ */
 import { Module } from '@nestjs/common';
 
 import { RefreshTokenPurgeService } from './refresh-token-purge.service';
@@ -12,6 +19,7 @@ import { RefreshTokenPurgeService } from './refresh-token-purge.service';
  */
 @Module({
   providers: [RefreshTokenPurgeService],
+  // Step 2. Imported by SchedulerWorkerModule, not by AuthModule.
   exports: [RefreshTokenPurgeService],
 })
 export class RefreshTokenPurgeModule {}

@@ -1,3 +1,12 @@
+/**
+ * HOW THIS FILE WORKS
+ *   1. onModuleInit hashes a random throwaway value once, at startup.
+ *   2. hash() produces an argon2id hash with a per-hash salt embedded in the string.
+ *   3. verify() checks a plaintext against a stored hash.
+ *   4. getDummyHash() returns the startup decoy, used when login finds no user.
+ *
+ * The only file that knows which hashing algorithm is used.
+ */
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { randomBytes } from 'node:crypto';
 import * as argon2 from 'argon2';
@@ -22,13 +31,16 @@ export class PasswordService implements OnModuleInit {
    * path and response time does not reveal whether an email exists. It uses the same cost
    * parameters as real hashes because it is produced by the same hash() call.
    */
+  // `!` because it is assigned in onModuleInit, not the constructor.
   private dummyHash!: string;
 
   async onModuleInit(): Promise<void> {
+    // Step 1. Once at boot, so the timing-equalising path costs nothing per request.
     this.dummyHash = await this.hash(randomBytes(32).toString('hex'));
   }
 
   hash(plain: string): Promise<string> {
+    // Step 2. argon2id — the hybrid variant, resistant to both side-channel and GPU attacks.
     return argon2.hash(plain, { type: argon2.argon2id });
   }
 
@@ -38,11 +50,13 @@ export class PasswordService implements OnModuleInit {
    * existing hashes. Returns false rather than throwing on a mismatch.
    */
   verify(hash: string, plain: string): Promise<boolean> {
+    // Step 3. Parameters come from the stored string, so old hashes keep verifying.
     return argon2.verify(hash, plain);
   }
 
   /** The startup-computed decoy hash, for the user-not-found branch of login. */
   getDummyHash(): string {
+    // Step 4. Verifying against this makes a missing email cost the same as a wrong password.
     return this.dummyHash;
   }
 }
