@@ -1,4 +1,11 @@
 /**
+ * HOW THIS FILE WORKS
+ *   1. MAX_UPLOAD_MB / MAX_UPLOAD_BYTES — the size cap, in both units.
+ *   2. ALLOWED_UPLOAD_MIME_TYPES — the canonical allow-list, mirrored by the frontend.
+ *   3. ALLOWED_UPLOAD_MIME — the same list as a RegExp, which is what Nest's validator takes.
+ */
+
+/**
  * Attachment upload policy: what may be uploaded, and how large.
  *
  * These are enforced by ParseFilePipe before the handler runs, so a rejected file never reaches
@@ -11,6 +18,7 @@
 
 /** Hard size cap. Anything larger is rejected with 422 before it is read into storage. */
 export const MAX_UPLOAD_MB = 5;
+// Derived, not written twice, so the two units cannot disagree.
 export const MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024;
 
 /**
@@ -33,5 +41,6 @@ export const ALLOWED_UPLOAD_MIME_TYPES = [
  * silently drop that and start rejecting real uploads. Two spellings, one intent — keep them in
  * step by hand and the comment explains why.
  */
+// `jpe?g` is the one deliberate difference from the array above.
 export const ALLOWED_UPLOAD_MIME =
   /^(image\/(png|jpe?g|gif|webp)|application\/pdf)$/;

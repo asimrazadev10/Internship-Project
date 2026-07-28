@@ -1,3 +1,10 @@
+/**
+ * HOW THIS FILE WORKS
+ *   1. Import GroupsModule for GroupMemberGuard, and StorageModule for the upload route.
+ *   2. Declare both controllers — messages and the nested reactions.
+ *   3. Declare both services.
+ *   4. Export MessagesService, which ChatGateway needs for the send_message path.
+ */
 import { Module } from '@nestjs/common';
 
 import { GroupsModule } from '../groups/groups.module';
@@ -25,8 +32,10 @@ import { ReactionsService } from './reactions.service';
  */
 @Module({
   imports: [GroupsModule, StorageModule],
+  // Step 2. Reactions kept as its own controller FILE, but not its own module.
   controllers: [MessagesController, ReactionsController],
   providers: [MessagesService, ReactionsService],
+  // Step 4. Only MessagesService is exported; ReactionsService has no outside caller.
   exports: [MessagesService],
 })
 export class MessagesModule {}
