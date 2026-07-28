@@ -1,3 +1,12 @@
+/**
+ * HOW THIS FILE WORKS
+ *   1. check() runs the database and Redis probes in parallel and returns a name -> state map.
+ *   2. The database probe issues SELECT 1 through Prisma.
+ *   3. The Redis probe PINGs the ioredis client BullMQ already holds.
+ *   4. probe() wraps either call in a timeout, so a hanging dependency reports 'down' quickly.
+ *
+ * Hand-rolled rather than pulling in @nestjs/terminus — two checks, a dozen lines.
+ */
 import { InjectQueue } from '@nestjs/bullmq';
 import { Injectable, Logger } from '@nestjs/common';
 import { Queue } from 'bullmq';
@@ -6,6 +15,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { SCHEDULER_QUEUE } from '../queues/queue.constants';
 import { DEPENDENCY_CHECK_TIMEOUT_MS } from './health.constants';
 
+// A probe never throws to its caller; it resolves to one of these two states.
 export type CheckState = 'up' | 'down';
 
 export interface ReadinessReport {
@@ -38,7 +48,9 @@ export class HealthService {
   ) {}
 
   async check(): Promise<ReadinessReport> {
+    // Step 1. Parallel, so the endpoint costs one timeout in total rather than two in sequence.
     const [database, redis] = await Promise.all([
+      // Step 2. The cheapest possible round-trip that still proves the pool works.
       this.probe('database', () => this.prisma.$queryRaw`SELECT 1`),
       this.probe('redis', async () => {
         // BullMQ exposes its ioredis client as a promise; it is the live connection, not a copy.
@@ -48,6 +60,7 @@ export class HealthService {
         const client = (await this.queue.client) as unknown as {
           ping: () => Promise<string>;
         };
+        // Step 3. PING is Redis's own liveness command.
         return client.ping();
       }),
     ]);
@@ -58,8 +71,10 @@ export class HealthService {
     name: string,
     run: () => Promise<unknown>,
   ): Promise<CheckState> {
+    // Held outside the try so `finally` can clear it whichever branch wins.
     let timer: NodeJS.Timeout | undefined;
     try {
+      // Step 4. Whichever settles first decides: the real call, or the timeout rejection.
       await Promise.race([
         run(),
         new Promise((_, reject) => {
@@ -71,9 +86,11 @@ export class HealthService {
       ]);
       return 'up';
     } catch (err) {
+      // Logged at warn, not error: a failed probe is a reportable state, not a fault.
       this.logger.warn(
         `readiness: ${name} is down — ${err instanceof Error ? err.message : String(err)}`,
       );
+      // Swallowed deliberately so one dead dependency still yields a full report.
       return 'down';
     } finally {
       // Without this the losing timer keeps the event loop alive for its full duration on every
