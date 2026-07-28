@@ -11,6 +11,7 @@
  * and WebSocket can never diverge on who may read a group.
  */
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
@@ -236,6 +237,62 @@ export class GroupsService {
     }
 
     return { left: true, ...outcome };
+  }
+
+  /**
+   * Hand ownership to another member. Both parties stay in the group; only their roles swap.
+   *
+   * Group.createdBy is deliberately NOT touched. It records who created the group, and it is half
+   * of @@unique([createdBy, name]) — reassigning it could collide with a group the new owner
+   * already has by that name, failing the transfer with an error about column names.
+   *
+   * The caller's OWNER role is verified INSIDE the transaction. A guard would run before this
+   * opened, so two concurrent transfers could both pass it and both commit, leaving two owners.
+   */
+  async transferOwnership(
+    callerId: string,
+    groupId: string,
+    targetUserId: string,
+  ): Promise<{ previousOwnerId: string; newOwnerId: string }> {
+    // Checked before the transaction because it needs no database read.
+    if (callerId === targetUserId) {
+      throw new BadRequestException('You already own this group');
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      const caller = await tx.groupMember.findUnique({
+        where: { groupId_userId: { groupId, userId: callerId } },
+      });
+      if (!caller || caller.role !== MemberRole.OWNER) {
+        throw new ForbiddenException(
+          'Only the group owner can transfer ownership',
+        );
+      }
+
+      const target = await tx.groupMember.findUnique({
+        where: { groupId_userId: { groupId, userId: targetUserId } },
+      });
+      if (!target) {
+        throw new NotFoundException('That user is not a member of this group');
+      }
+
+      await tx.groupMember.update({
+        where: { id: target.id },
+        data: { role: MemberRole.OWNER },
+      });
+      await tx.groupMember.update({
+        where: { id: caller.id },
+        data: { role: MemberRole.MEMBER },
+      });
+    });
+
+    this.events.emit(OWNER_CHANGED, {
+      groupId,
+      previousOwnerId: callerId,
+      newOwnerId: targetUserId,
+    } satisfies OwnerChangedPayload);
+
+    return { previousOwnerId: callerId, newOwnerId: targetUserId };
   }
 
   /**

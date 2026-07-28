@@ -142,4 +142,60 @@ describe('GroupsService leave/transfer (e2e)', () => {
     // Messages cascade from Group, so nothing is orphaned.
     expect(await prisma.message.count({ where: { groupId } })).toBe(0);
   });
+
+  it('transfers ownership between two members', async () => {
+    const owner = await mkUser('t-own');
+    const target = await mkUser('t-tgt');
+    const groupId = await mkGroup(owner, [
+      { id: target, joinedAt: new Date() },
+    ]);
+
+    const result = await groups.transferOwnership(owner, groupId, target);
+
+    expect(result).toEqual({ previousOwnerId: owner, newOwnerId: target });
+    const [was, now] = await Promise.all([
+      prisma.groupMember.findUnique({
+        where: { groupId_userId: { groupId, userId: owner } },
+      }),
+      prisma.groupMember.findUnique({
+        where: { groupId_userId: { groupId, userId: target } },
+      }),
+    ]);
+    expect(was?.role).toBe('MEMBER');
+    expect(now?.role).toBe('OWNER');
+    // createdBy is a historical fact and must survive the transfer untouched.
+    const group = await prisma.group.findUnique({ where: { id: groupId } });
+    expect(group?.createdBy).toBe(owner);
+  });
+
+  it('rejects a transfer attempted by a non-owner', async () => {
+    const owner = await mkUser('n-own');
+    const member = await mkUser('n-mem');
+    const groupId = await mkGroup(owner, [
+      { id: member, joinedAt: new Date() },
+    ]);
+
+    await expect(
+      groups.transferOwnership(member, groupId, owner),
+    ).rejects.toMatchObject({ status: 403 });
+  });
+
+  it('rejects a transfer to someone who is not a member', async () => {
+    const owner = await mkUser('o-own');
+    const outsider = await mkUser('o-out');
+    const groupId = await mkGroup(owner);
+
+    await expect(
+      groups.transferOwnership(owner, groupId, outsider),
+    ).rejects.toMatchObject({ status: 404 });
+  });
+
+  it('rejects a transfer to yourself', async () => {
+    const owner = await mkUser('s-own');
+    const groupId = await mkGroup(owner);
+
+    await expect(
+      groups.transferOwnership(owner, groupId, owner),
+    ).rejects.toMatchObject({ status: 400 });
+  });
 });
