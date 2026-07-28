@@ -285,7 +285,7 @@ worker processes must be running for summaries to be generated and broadcast.
 | Variable | Purpose | Default |
 |---|---|---|
 | `GOOGLE_GENERATIVE_AI_API_KEY` | Free AI Studio API key | — (required) |
-| `GEMINI_MODEL` | Gemini model id | `gemini-2.0-flash` |
+| `GEMINI_MODEL` | Gemini model id | `gemini-3.5-flash` |
 | `SUMMARY_INTERVAL_MS` | How often the scheduler tick fires | `86400000` (24h) |
 | `SUMMARY_WINDOW_MS` | How far back each summary looks | `86400000` (24h) |
 | `SCHEDULER_WORKER_CONCURRENCY` | Concurrent jobs, `worker:scheduler` | `1` |

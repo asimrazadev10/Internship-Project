@@ -129,7 +129,12 @@ export class EnvironmentVariables {
 
   @IsString()
   @IsNotEmpty()
-  GEMINI_MODEL: string = 'gemini-2.0-flash';
+  // gemini-3.5-flash, not the 2.x line: a newly created Google project gets ZERO free-tier quota
+  // for gemini-2.0-flash (429 with `limit: 0` — not quota exhausted, none ever allocated), and
+  // gemini-2.5-flash returns 404 "no longer available to new users". Both fail only at the first
+  // real summary job, long after the key itself validates, so the default has to be a model a
+  // fresh key can actually call.
+  GEMINI_MODEL: string = 'gemini-3.5-flash';
 
   // Global Gemini call rate, enforced by the ai-queue's Redis-coordinated BullMQ limiter. Defaults
   // are free AI-Studio-tier figures; a paid key should raise them without a code change. Read via

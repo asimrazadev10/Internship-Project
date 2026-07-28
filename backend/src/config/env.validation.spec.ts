@@ -12,7 +12,7 @@ const base = {
 describe('validateEnv — Phase 4 keys', () => {
   it('applies defaults for the summary knobs', () => {
     const cfg = validateEnv(base);
-    expect(cfg.GEMINI_MODEL).toBe('gemini-2.0-flash');
+    expect(cfg.GEMINI_MODEL).toBe('gemini-3.5-flash');
     expect(cfg.SUMMARY_INTERVAL_MS).toBe(86400000);
     expect(cfg.SUMMARY_WINDOW_MS).toBe(86400000);
   });
