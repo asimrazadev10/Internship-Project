@@ -5,12 +5,14 @@ import { useParams } from "next/navigation";
 import { useMemo, useState } from "react";
 
 import { AppHeader } from "@/components/app-header";
+import { MembersPanel } from "@/components/groups/members-panel";
 import { MessageComposer } from "@/components/messages/message-composer";
 import { MessageList } from "@/components/messages/message-list";
 import { MessageSearch } from "@/components/messages/message-search";
 import { Avatar } from "@/components/ui/avatar";
 import { EYEBROW_CLASS } from "@/components/ui/styles";
 import { getApiErrorMessage } from "@/lib/api/error";
+import { useAuth } from "@/lib/auth/auth-context";
 import { useRequireAuth } from "@/lib/auth/use-require-auth";
 import { useGroup } from "@/lib/queries/groups";
 import { useSocket } from "@/lib/socket/socket-provider";
@@ -38,6 +40,8 @@ export default function GroupPage() {
   const { typingUserIds, notifyTyping, stopTyping } = useTyping(groupId);
   const onlineUserIds = usePresence(groupId);
   const [copied, setCopied] = useState(false);
+  const { user } = useAuth();
+  const [showMembers, setShowMembers] = useState(false);
 
   const typingNames = useMemo(() => {
     if (!group) return [];
@@ -89,10 +93,15 @@ export default function GroupPage() {
                     {group.name}
                   </h1>
                   <p className="flex items-center gap-2 text-sm text-muted">
-                    <span>
+                    <button
+                      type="button"
+                      onClick={() => setShowMembers((v) => !v)}
+                      title="Show members, transfer ownership, or leave"
+                      className="underline decoration-dotted underline-offset-2 hover:text-ink"
+                    >
                       {group.members.length} member
                       {group.members.length === 1 ? "" : "s"}
-                    </span>
+                    </button>
                     {onlineUserIds.length > 0 && (
                       <span className="inline-flex items-center gap-1 text-live">
                         <span className="h-1.5 w-1.5 rounded-full bg-live" />
@@ -120,6 +129,16 @@ export default function GroupPage() {
                 {copied ? "Copied ✓" : "Copy invite id"}
               </button>
             </div>
+          )}
+
+          {group && showMembers && user && (
+            <MembersPanel
+              groupId={groupId}
+              members={group.members}
+              currentUserId={user.id}
+              onlineUserIds={onlineUserIds}
+              onClose={() => setShowMembers(false)}
+            />
           )}
 
           {group && <MessageSearch groupId={groupId} />}
