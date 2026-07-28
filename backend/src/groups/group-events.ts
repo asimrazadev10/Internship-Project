@@ -37,3 +37,21 @@ export interface ReadMarkedPayload {
   userId: string;
   lastReadAt: Date;
 }
+
+/** Emitted after a member's row is deleted, so the gateway can broadcast and evict their sockets. */
+export const MEMBER_LEFT = 'member.left';
+
+export interface MemberLeftPayload {
+  groupId: string;
+  // Ids only: the member row is gone, so there is no shape left to send.
+  userId: string;
+}
+
+/** Emitted after ownership moves, by explicit transfer or by an owner leaving. */
+export const OWNER_CHANGED = 'owner.changed';
+
+export interface OwnerChangedPayload {
+  groupId: string;
+  previousOwnerId: string;
+  newOwnerId: string;
+}
