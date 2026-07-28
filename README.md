@@ -2,450 +2,626 @@
   <img src="assets/banner.svg" alt="Convo — real-time group chat" width="100%">
 </p>
 
-# Group Chat Application
+<h1 align="center">Convo</h1>
 
-A group chat backend built with **NestJS**, **PostgreSQL** and **Prisma**. The project is
-developed in five architectural phases, each on its own branch, each building on the last:
+<p align="center">
+  <b>Real-time group chat with AI daily summaries.</b><br>
+  A full-stack monorepo built across five architectural phases — REST → Polling → WebSockets → Background Jobs → Distributed Systems.
+</p>
 
+<p align="center">
+  <img alt="NestJS 11" src="https://img.shields.io/badge/NestJS-11-E0234E?logo=nestjs&logoColor=white">
+  <img alt="Next.js 16" src="https://img.shields.io/badge/Next.js-16-000000?logo=nextdotjs&logoColor=white">
+  <img alt="TypeScript 5" src="https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white">
+  <img alt="PostgreSQL 16" src="https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white">
+  <img alt="Prisma 6" src="https://img.shields.io/badge/Prisma-6-2D3748?logo=prisma&logoColor=white">
+  <img alt="Redis" src="https://img.shields.io/badge/Redis-BullMQ-DC382D?logo=redis&logoColor=white">
+  <img alt="Socket.IO" src="https://img.shields.io/badge/Socket.IO-4.8-010101?logo=socketdotio&logoColor=white">
+  <img alt="Gemini" src="https://img.shields.io/badge/Gemini-AI%20summaries-8E75B2?logo=googlegemini&logoColor=white">
+</p>
+
+---
+
+Convo is a group chat application where every architectural decision is deliberate and written
+down. It runs a NestJS API, a Next.js client, four standalone BullMQ workers, Postgres and Redis —
+and the interesting part is not that it works, but *why each piece is shaped the way it is*: why
+readiness and liveness are separate probes, why the refresh token is opaque and hashed, why the
+summary pipeline is a nested BullMQ Flow rather than four flat siblings, why message history uses
+keyset pagination instead of `OFFSET`.
+
+All five phases are complete and merged into `main`, plus the bonus features.
+
+## Contents
+
+- [What it does](#what-it-does)
+- [Quick start](#quick-start)
+- [Architecture](#architecture)
+- [Tech stack](#tech-stack)
+- [Repository layout](#repository-layout)
+- [Configuration](#configuration)
+- [HTTP API](#http-api)
+- [WebSocket API](#websocket-api)
+- [Design notes](#design-notes)
+- [Testing](#testing)
+- [Troubleshooting](#troubleshooting)
+- [Further reading](#further-reading)
+
+---
+
+## What it does
+
+| | Feature | Notes |
+|---|---|---|
+| 🔐 | **Auth** | Email/password (argon2id) + Google sign-in. Short-lived JWT access token, opaque rotating refresh token with reuse detection |
+| 👥 | **Groups** | Create, join, leave, transfer ownership, member list with roles |
+| 💬 | **Messaging** | Send, edit, soft-delete, cursor-paginated history, case-insensitive search |
+| ⚡ | **Real-time** | Socket.IO with a Redis adapter — new messages, edits, reactions, typing, presence, read receipts |
+| 😀 | **Reactions** | One-tap emoji toggle; the server decides add vs. remove |
+| 📎 | **Attachments** | Images and PDFs, ≤5 MB, validated by magic bytes. Supabase Storage or local disk, chosen at runtime |
+| 🤖 | **AI summaries** | Gemini writes a daily digest per active group, delivered as a normal chat message |
+| 🧵 | **Distributed** | Four standalone worker processes draining four BullMQ queues, coordinated by a BullMQ Flow |
+| ❤️ | **Ops** | Separate liveness/readiness probes, startup config validation, structured error envelope |
+
+---
+
+## Quick start
+
+**Prerequisites:** Node.js 20+, Docker Desktop.
+
+### The one-command path (Windows / PowerShell)
+
+```powershell
+git clone https://github.com/asimrazadev10/Internship-Project.git
+cd "Internship-Project"
+
+# copy the two env files and fill in the blanks (see Configuration)
+copy backend\.env.example backend\.env
+copy frontend\.env.example frontend\.env.local
+
+npm --prefix backend install
+npm --prefix frontend install
+
+.\dev.ps1
 ```
-REST APIs → Polling → WebSockets → Background Jobs (AI) → Distributed Systems
+
+`dev.ps1` brings the entire system up in dependency order: Docker services → pending migrations →
+API + four workers + frontend, with colour-coded prefixed output in one terminal. Ctrl-C stops all
+of them together.
+
+| Flag | Effect |
+|---|---|
+| `-NoWorkers` | Chat only; AI summaries are not generated |
+| `-Prod` | Run the compiled API (`start:prod`) instead of watch mode — lower memory |
+| `-SkipMigrate` | Skip `prisma migrate deploy` |
+| `-Clean` | Delete `frontend/.next` and `backend/dist` first; use after a force-killed run |
+| `-Down` | Stop the Docker services and exit |
+
+> **Why a script rather than a `concurrently` one-liner:** the workers run from `backend/dist`, and
+> `nest start --watch` **deletes** `dist/` on startup (`deleteOutDir: true`). Started together, the
+> workers lose the race and die with `Cannot find module './scheduler-worker.module'`. `dev.ps1`
+> holds them back until the API's port opens, which proves the compile finished. It also probes
+> Postgres/Redis with a TCP socket rather than `docker ps`, because a wedged Docker CLI says nothing
+> about whether the database is reachable.
+
+### Manual path (any OS)
+
+```bash
+# 1. Postgres + Redis
+docker compose up -d
+
+# 2. Backend
+cd backend
+npm install
+cp .env.example .env          # fill in JWT secrets + GOOGLE_GENERATIVE_AI_API_KEY
+npx prisma migrate deploy
+npm run start:dev             # API on :3000
+
+# 3. Workers (new terminal, from backend/)
+npm run workers:all           # all four; or worker:scheduler / worker:ai / worker:summary / worker:notification
+
+# 4. Frontend (new terminal)
+cd frontend
+npm install
+cp .env.example .env.local
+npm run dev                   # app on :3001
 ```
 
-This branch (`feature/rest-chat`) is **Phase 1**: the complete app over REST only — custom
-JWT auth, Google sign-in, groups, membership, and paginated message history. New messages
-appear on refresh (real-time arrives in Phase 3).
+| Service | URL |
+|---|---|
+| Frontend | http://localhost:3001 |
+| API | http://localhost:3000 |
+| Readiness probe | http://localhost:3000/health/ready |
+| Postgres | `localhost:55432` |
+| Redis | `localhost:6379` |
+| Prisma Studio | `npm --prefix backend run prisma:studio` → http://localhost:5555 |
+
+> **Port note:** Postgres is published on **55432**, not 5432, to avoid colliding with a native
+> Postgres install. `DATABASE_URL` and `POSTGRES_PORT` must agree — change both or neither.
+
+---
+
+## Architecture
+
+```mermaid
+flowchart TB
+    subgraph Browser
+        UI["Next.js 16 · React 19<br/>TanStack Query · Socket.IO client"]
+    end
+
+    subgraph API["NestJS API — :3000"]
+        REST["REST controllers<br/>global JWT guard"]
+        GW["ChatGateway<br/>Socket.IO + Redis adapter"]
+    end
+
+    subgraph Workers["Standalone worker processes"]
+        WS["scheduler"]
+        WA["ai"]
+        WSU["summary"]
+        WN["notification"]
+    end
+
+    PG[("PostgreSQL 16<br/>Prisma 6")]
+    RD[("Redis<br/>BullMQ + pub/sub")]
+    GEM{{"Gemini<br/>@ai-sdk/google"}}
+
+    UI -->|"HTTPS · /api proxy"| REST
+    UI <-->|"WebSocket"| GW
+    REST --> PG
+    GW --> PG
+    GW <--> RD
+    WS --> RD
+    WA --> RD
+    WSU --> RD
+    WN --> RD
+    WSU --> PG
+    WS --> PG
+    WA --> GEM
+    WN -.->|"redis-emitter →<br/>adapter → clients"| RD
+```
+
+The frontend never talks to the API cross-origin: Next rewrites `/api/*` to `BACKEND_ORIGIN`, so
+there is no CORS preflight on ordinary requests. The WebSocket connects directly, because sockets
+do not proxy.
+
+### The AI summary pipeline
+
+Every `SUMMARY_INTERVAL_MS` the scheduler finds groups with activity in the window and builds **one
+BullMQ Flow per group** — so a Gemini failure in one group can never block another.
+
+```mermaid
+flowchart BT
+    F["fetch-messages<br/>summary-queue · leaf, runs FIRST"]
+    G["generate-ai-summary<br/>ai-queue · pure Gemini, no DB"]
+    S["save-summary<br/>summary-queue · writes AI_SUMMARY row"]
+    P["publish-summary<br/>notification-queue · broadcasts"]
+    PAR["group-summary<br/>parent · completes when the chain does"]
+
+    F --> G --> S --> P --> PAR
+```
+
+A **nested chain**, not four flat siblings: the stages are strictly sequential and each reads the
+previous stage's output via `getChildrenValues()`. Flat siblings under one parent would run in
+parallel, which a `fetch → generate → save → publish` pipeline cannot do. `failParentOnFailure`
+bubbles any stage failure up so the flow fails cleanly instead of stranding the parent in
+waiting-children.
+
+Because `publish` runs in a **different process** from the API that holds the Socket.IO connections,
+it cannot call `server.emit()`. It publishes through **`@socket.io/redis-emitter`** onto the same
+Redis pub/sub channels the API's **`@socket.io/redis-adapter`** subscribes to — so the broadcast
+crosses the process boundary and reaches clients exactly like any other socket event.
+
+Every job and its parent/child dependency state lives in Redis, not in worker memory. You can run
+the four workers **one at a time**, Ctrl-C between each, and the summary still completes in the
+correct order — that durability is the whole point.
 
 ---
 
 ## Tech stack
+
+<table>
+<tr><th align="left">Backend</th><th align="left">Frontend</th></tr>
+<tr valign="top"><td>
 
 | Layer | Choice |
 |---|---|
 | Framework | NestJS 11 |
 | Database | PostgreSQL 16 |
 | ORM | Prisma 6 |
-| Validation | class-validator + class-transformer |
-| Auth | JWT (access) + opaque rotating refresh tokens; argon2id; Google ID-token verification |
+| Cache / queues | Redis + BullMQ 5 |
+| Real-time | Socket.IO 4.8 + Redis adapter |
+| Validation | class-validator / class-transformer |
+| Hashing | argon2id |
+| AI | Gemini via `@ai-sdk/google` (Vercel AI SDK) |
 
----
+</td><td>
 
-## Prerequisites
+| Layer | Choice |
+|---|---|
+| Framework | Next.js 16 (App Router, Turbopack) |
+| UI | React 19 |
+| Server state | TanStack Query 5 |
+| HTTP | axios (with `/api` rewrite proxy) |
+| Real-time | socket.io-client 4.8 |
+| Styling | Tailwind CSS 4 |
+| Language | TypeScript 5 |
 
-- Node.js 20+
-- Docker Desktop (for Postgres and Redis)
+</td></tr>
+</table>
 
 ---
 
 ## Repository layout
 
-This is a monorepo. The NestJS API lives in `backend/`; the Next.js frontend (added in
-Phase 2) lives in `frontend/`. Shared dev infrastructure (`docker-compose.yml`) sits at the
-root. Run backend commands from `backend/`.
-
-## Setup
-
-```bash
-# 1. Start local services (Postgres + Redis) — from the repo root
-docker compose up -d
-
-# 2. Backend
-cd backend
-npm install
-
-# 3. Create your env file and fill it in (inside backend/)
-cp .env.example .env
-#    - generate two different JWT secrets, e.g.:  openssl rand -base64 48
-#    - set GOOGLE_CLIENT_ID to your Google Cloud OAuth client id (for /auth/google)
-#    - the shipped DATABASE_URL already uses port 55432, the port docker-compose publishes
-
-# 4. Apply migrations (creates the schema)
-npx prisma migrate dev
-
-# 5. Run the API
-npm run start:dev
+```
+├── backend/                  NestJS API + workers
+│   ├── src/
+│   │   ├── config/           env loading + startup validation
+│   │   ├── common/           filters, interceptors, guards, decorators, pipes, DTOs
+│   │   ├── prisma/           PrismaService + module
+│   │   ├── auth/             register/login/refresh/logout/google, JWT strategy, rotation
+│   │   ├── users/            user persistence + serialization
+│   │   ├── groups/           groups, membership, join/leave/transfer
+│   │   ├── messages/         create, edit, delete, history, search, reactions
+│   │   ├── chat/             ChatGateway, WS auth middleware, room + event contract
+│   │   ├── notifications/    cross-process broadcast via redis-emitter
+│   │   ├── summary/          per-stage BullMQ processors + Flow producer
+│   │   ├── ai/               Gemini wrapper — vendor isolated behind one interface
+│   │   ├── queues/           queue names and job constants
+│   │   ├── health/           liveness + readiness probes
+│   │   └── workers/          four standalone worker entry points
+│   └── prisma/               schema.prisma + versioned migrations
+├── frontend/                 Next.js app
+│   └── src/
+│       ├── app/              App Router: (auth)/login, (auth)/register, groups/[id]
+│       ├── components/       auth, groups, messages, ui
+│       └── lib/              api clients, auth context, TanStack queries, socket layer
+├── docs/                     learning notes, design specs, study guide
+├── scripts/wait-for-port.js  dependency-free port gate used by dev.ps1
+├── docker-compose.yml        Postgres + Redis
+└── dev.ps1                   one-command dev runner
 ```
 
-> **Port note:** `docker-compose.yml` publishes Postgres on the port in `POSTGRES_PORT`
-> (default in this repo: `55432`, chosen to avoid colliding with any native Postgres already on
-> 5432/5433). `DATABASE_URL` must use the same port. Inspect the DB with `npm run prisma:studio`
-> — it reads `DATABASE_URL`, so it always connects to the right server.
+### Data model
+
+Six models: `User`, `Group`, `GroupMember`, `Message`, `Reaction`, `RefreshToken`.
+
+Notable choices: **UUIDv7** primary keys (`uuid(7)` + `@db.Uuid`) so ids sort by creation time and
+index locality stays good; `Message` carries `type` (`USER` / `SYSTEM` / `AI_SUMMARY`) with a
+nullable `senderId`, so **an AI summary is just a message** with no human sender — it needs zero new
+transport code to reach clients; and `@@index([groupId, createdAt, id])` exists specifically so the
+keyset pagination cursor resolves inside the index instead of touching heap rows.
 
 ---
 
-## Commands
+## Configuration
 
-All backend commands run from `backend/` (except `docker compose`, which runs from the root).
+Config is **validated at startup** — the app refuses to boot on a missing or malformed value rather
+than failing later on the first request that needs it.
 
-```bash
-npm run start:dev       # API with watch reload
-npm run start:prod      # build + run compiled output
-npm run build           # compile
-npm run lint            # eslint — reports, does not modify
-npm run lint:fix        # eslint --fix
-npm run format:check    # prettier, check only
-npm run test:e2e        # end-to-end tests (needs Postgres running)
-npm run prisma:studio   # browse the database
-npm run prisma:migrate  # prisma migrate dev
-```
-
----
-
-## Environment variables
-
-See `.env.example` for the full list. Configuration is **validated at startup** — the app
-refuses to boot on a missing or malformed value rather than failing later on a request.
-
-| Variable | Purpose |
-|---|---|
-| `PORT`, `NODE_ENV` | App |
-| `DATABASE_URL` | Postgres connection (port must match `POSTGRES_PORT`) |
-| `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET` | **Different** secrets for access vs refresh signing |
-| `JWT_ACCESS_EXPIRES_IN`, `JWT_REFRESH_EXPIRES_IN` | Token lifetimes (e.g. `15m`, `7d`) |
-| `GOOGLE_CLIENT_ID` | Google OAuth client id; the audience a Google ID token must carry |
-| `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `SUPABASE_BUCKET` | **Optional** — file uploads. See below |
-
----
-
-## File uploads
-
-`POST /groups/:id/messages/upload` (multipart: `file`, optional `content` caption) attaches a
-file to a message. Images and PDFs only, 5 MB max, enforced by `ParseFilePipe` *before* the
-handler runs — validation inspects the actual bytes, not just the declared type. The resulting
-message is broadcast like any other, so attachments stream live and land in history.
-
-**Two storage backends, chosen at runtime — no code change between them:**
-
-| | When | Where the bytes go | URL returned |
-|---|---|---|---|
-| **Supabase Storage** | `SUPABASE_URL` + `SUPABASE_SERVICE_KEY` set | Supabase bucket, via the Storage REST API | Absolute public URL |
-| **Local disk** | either unset | `backend/uploads/<groupId>/` | `/api/uploads/…`, via the Next proxy |
-
-The fallback exists so uploads work on a fresh clone with no external account. Set the two
-Supabase variables to switch; nothing else changes. The service-role key is server-side only and
-never reaches the browser.
-
-For Supabase, create a **public** bucket (so the returned URLs load directly) and set
-`SUPABASE_BUCKET` to its name — it defaults to `chat-uploads`.
-
-> **Why the stored filename is rewritten.** The extension is derived from the validated MIME
-> type, never from the uploader's filename. Express serves static files with a `Content-Type`
-> taken from the *extension*, while validation checked the *bytes* — so preserving a user-supplied
-> extension would let a real PNG named `evil.html` come back as `text/html` from the app's own
-> origin, which is stored XSS with the access token in `localStorage`. Local uploads are
-> additionally served with `nosniff` and a `sandbox` CSP.
-
----
-
-## API
-
-All responses share one envelope:
-
-```json
-{ "success": true, "data": { }, "message": "…", "meta": { } }
-```
-```json
-{ "success": false, "error": { "code": "…", "message": "…", "details": [ ] } }
-```
-
-### Health (public)
-
-| Method | Path | Notes |
-|---|---|---|
-| GET | `/health` | Liveness — touches nothing, cannot flap |
-| GET | `/health/ready` | Readiness — pings Postgres and Redis; 503 if either is down |
-
-Two endpoints, not one, because they answer different questions. Liveness asks *"should this
-process be restarted?"*; readiness asks *"can it serve traffic right now?"*. A liveness probe
-that checks the database would restart a healthy process during a brief DB blip — turning a
-partial outage into a total one, and dropping every in-memory WebSocket connection with it.
-Each dependency check is bounded by a short timeout, since an unreachable database stops
-answering rather than refusing.
-
-### Auth (public)
-
-| Method | Path | Body | Notes |
-|---|---|---|---|
-| POST | `/auth/register` | `{ email, password, name }` | Returns user + access + refresh |
-| POST | `/auth/login` | `{ email, password }` | Generic 401 on any failure |
-| POST | `/auth/refresh` | `{ refreshToken }` | Rotates the token; reuse revokes the family |
-| POST | `/auth/logout` | `{ refreshToken }` | **Requires** access token; revokes the session |
-| POST | `/auth/google` | `{ idToken }` | Verifies Google's ID token, issues our JWT |
-
-### Groups & messages (require `Authorization: Bearer <access token>`)
-
-| Method | Path | Notes |
-|---|---|---|
-| POST | `/groups` | Create a group; creator becomes OWNER |
-| GET | `/groups` | Groups the caller belongs to |
-| GET | `/groups/:id` | Group detail + members — **members only** |
-| POST | `/groups/:id/join` | Join a group (see model below) |
-| POST | `/groups/:id/leave` | Leave a group — **members only** (see ownership model below) |
-| POST | `/groups/:id/transfer-ownership` | Hand ownership to another member. Body `{ userId }` — **owner only** |
-| POST | `/groups/:id/messages` | Post a message — **members only** |
-| GET | `/groups/:id/messages?limit=&cursor=` | History, newest first — **members only** |
-| POST | `/groups/:id/messages/upload` | Attach a file (multipart) — **members only** |
-
-### Join model
-
-**Open join.** Any authenticated user holding a group's id may join via `POST /groups/:id/join`.
-Group ids are unguessable UUIDv7 values, so the id acts as a weak capability token — you share
-it out of band. A production alternative (invite tokens with expiry) is the natural next step;
-it is intentionally out of scope for Phase 1.
-
-### Leaving and ownership
-
-A group can never be left ownerless, so what `POST /groups/:id/leave` does depends on who calls it:
-
-| Caller | Others remain? | Result |
-|---|---|---|
-| Member | — | their membership row is deleted |
-| Owner | yes | the **longest-standing** remaining member is promoted to OWNER, then the caller leaves |
-| Owner | no | the **group is deleted**, and its messages cascade with it |
-
-The response says which happened: `{ left, groupDeleted, newOwnerId }`.
-
-`POST /groups/:id/transfer-ownership` hands ownership over deliberately while both parties stay
-in the group. The owner check runs *inside* the database transaction rather than in a guard —
-a guard runs before the transaction opens, so two concurrent transfers could both pass it and
-leave the group with two owners.
-
-`Group.createdBy` is never reassigned by either operation. It records who *created* the group and
-is half of the `@@unique([createdBy, name])` constraint; moving it could collide with a group the
-new owner already has under that name.
-
-Leaving also evicts that user's live sockets from the group's room. Sockets join on `join_group`
-and nothing else removes them, so without this a departed member would keep receiving messages
-until they happened to disconnect.
-
-### Pagination
-
-Message history uses **keyset (cursor) pagination**. Request `?limit=20`; the response's
-`meta.nextCursor` is an opaque token — pass it back as `?cursor=…` for the next (older) page.
-`meta.hasMore` is `false` on the last page. Keyset is used over OFFSET because it stays correct
-when new messages arrive between page requests and is O(log n) at any depth.
-
----
-
-## Authentication model
-
-- **Access token** — short-lived JWT, verified by signature (no DB hit). Sent as
-  `Authorization: Bearer <token>`.
-- **Refresh token** — long-lived opaque string; only its SHA-256 hash is stored. Rotated on
-  every use. Presenting an already-used token (replay) revokes the whole token family.
-- Every route is protected by default (global guard); auth routes opt out with `@Public()`.
-- **Google**: the frontend obtains a Google ID token and posts it to `/auth/google`; the backend
-  verifies signature, audience, issuer and `email_verified`, then issues its own JWT. Google's
-  token is never used as a session credential.
-
----
-
-## AI daily summaries (Phase 4 → distributed in Phase 5)
-
-Every `SUMMARY_INTERVAL_MS` (default 24h), a scheduler finds groups with activity in the last
-`SUMMARY_WINDOW_MS` and fans out one summary pipeline per active group — one pipeline per group,
-so a Gemini failure/retry in one group can never block another. Each pipeline fetches that
-window's messages, summarizes them with **Gemini** (via the Vercel AI SDK), and posts the result
-back as a normal message (`type: AI_SUMMARY`, `senderId: null`) through the same `MessagesService`
-path chat messages already use — so it broadcasts live to clients with **zero new transport code**
-on the persistence side.
-
-### Phase 5 architecture — distributed queues, workers, and Flows
-
-Phase 4 ran everything in-process inside the main API. Phase 5 splits it into **4 standalone
-worker processes**, each draining its own BullMQ queue:
-
-| Queue | Worker script | Job(s) it drains |
-|---|---|---|
-| `scheduler-queue` | `worker:scheduler` | the repeatable tick → finds active groups, builds one Flow per group |
-| `ai-queue` | `worker:ai` | `generate-ai-summary` (pure Gemini — the ai-worker needs no DB access) |
-| `summary-queue` | `worker:summary` | `fetch-messages`, `save-summary`, and the `group-summary` parent |
-| `notification-queue` | `worker:notification` | `publish-summary` (broadcast the persisted row) |
-
-Each active group gets **one BullMQ Flow** (`FlowProducer`) — a `group-summary` parent whose child
-chain is the four stages. A parent completes only after **all** its children succeed; children run
-first and each parent reads its child's result via `job.getChildrenValues()`. Concretely:
-
-```
-group-summary            (parent, summary-queue — completes only after all children)
-└── publish-summary      (notification-queue)
-    └── save-summary     (summary-queue)
-        └── generate-ai-summary (ai-queue)
-            └── fetch-messages  (summary-queue, leaf — runs FIRST)
-```
-
-`fetch-messages` runs first (leaf): it reads the window's messages and owns the exists/empty skips.
-`generate` calls Gemini on the fetched transcript, `save` persists the `AI_SUMMARY` row, and
-`publish` broadcasts it — so persist-then-broadcast ordering falls out of the Flow shape for free,
-and the `group-summary` parent reports completion once the whole chain is done. A permanent failure
-at any stage (`failParentOnFailure`) fails the whole flow cleanly instead of leaving parents stuck
-in waiting-children. (It is a nested chain rather than four flat siblings because the stages are
-strictly sequential — flat siblings would run in parallel.)
-
-Because `publish` now runs in a **different process** than the main API (which still holds the
-Socket.IO connections), it can't call `server.emit()` directly. It broadcasts instead via
-**`@socket.io/redis-emitter`**, which publishes onto the same Redis pub/sub channel the main app's
-Phase 3 **`@socket.io/redis-adapter`** subscribes to — so the broadcast crosses process boundaries
-over Redis and reaches connected clients exactly like any other socket event.
-
-### Running the workers
-
-```bash
-npm run worker:scheduler      # scheduler-queue
-npm run worker:ai              # ai-queue (Gemini calls)
-npm run worker:summary         # summary-queue (fetch-messages, save-summary, group-summary)
-npm run worker:notification    # notification-queue (broadcast)
-npm run workers:all            # all four, concurrently, in one terminal (dev convenience)
-```
-
-The main API process (`npm run start:dev`) no longer runs any summary stage itself — all four
-worker processes must be running for summaries to be generated and broadcast.
-
-### Get a free key
-
-1. Get a free key at https://aistudio.google.com/apikey (Google AI Studio — the free Generative
-   Language API tier used by `@ai-sdk/google`, **not** paid Vertex AI).
-2. Set it as `GOOGLE_GENERATIVE_AI_API_KEY` in `backend/.env`.
-3. Everything else below has a working default — no other setup required.
-
-### Env vars
+<details open>
+<summary><b><code>backend/.env</code></b> — copy from <code>.env.example</code></summary>
 
 | Variable | Purpose | Default |
 |---|---|---|
-| `GOOGLE_GENERATIVE_AI_API_KEY` | Free AI Studio API key | — (required) |
-| `GEMINI_MODEL` | Gemini model id | `gemini-3.5-flash` |
-| `SUMMARY_INTERVAL_MS` | How often the scheduler tick fires | `86400000` (24h) |
-| `SUMMARY_WINDOW_MS` | How far back each summary looks | `86400000` (24h) |
-| `SCHEDULER_WORKER_CONCURRENCY` | Concurrent jobs, `worker:scheduler` | `1` |
-| `AI_WORKER_CONCURRENCY` | Concurrent jobs, `worker:ai` (paired with the Gemini rate limiter below) | `10` |
-| `SUMMARY_WORKER_CONCURRENCY` | Concurrent jobs, `worker:summary` | `5` |
-| `NOTIFICATION_WORKER_CONCURRENCY` | Concurrent jobs, `worker:notification` | `3` |
+| `PORT`, `NODE_ENV` | App | `3000`, `development` |
+| `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `POSTGRES_PORT` | Consumed by `docker-compose.yml` | `chatuser`, `chatpass`, `chatdb`, `55432` |
+| `DATABASE_URL` | Postgres connection — port must match `POSTGRES_PORT` | — |
+| `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET` | **Different** secrets, so a leaked access secret cannot mint refresh tokens | — (required) |
+| `JWT_ACCESS_EXPIRES_IN`, `JWT_REFRESH_EXPIRES_IN` | Token lifetimes | `15m`, `7d` |
+| `GOOGLE_CLIENT_ID` | The `audience` a Google ID token must carry | — |
+| `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD` | Queues + socket pub/sub | `localhost`, `6379` |
+| `GOOGLE_GENERATIVE_AI_API_KEY` | Free AI Studio key | — (required for summaries) |
+| `GEMINI_MODEL` | Model id | `gemini-3.5-flash` |
+| `SUMMARY_INTERVAL_MS`, `SUMMARY_WINDOW_MS` | Tick frequency and lookback | `86400000` (24h) |
+| `AI_RATE_LIMIT_MAX`, `AI_RATE_LIMIT_DURATION_MS` | Global Gemini cap, enforced by a Redis-coordinated limiter across *all* ai-worker instances | `10`, `60000` |
+| `TOKEN_PURGE_INTERVAL_MS`, `REFRESH_TOKEN_PURGE_GRACE_MS` | Refresh-token housekeeping | `86400000`, `604800000` |
+| `SOCKET_CORS_ORIGIN` | Allowed WebSocket origin | `http://localhost:3001` |
+| `*_WORKER_CONCURRENCY` | Per-process job concurrency for each of the four workers | `1` / `10` / `5` / `3` |
+| `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `SUPABASE_BUCKET` | **Optional** — uploads fall back to local disk when unset | — |
 
-### Running it
+Generate the JWT secrets with `openssl rand -base64 48`. Get a free Gemini key at
+[aistudio.google.com/apikey](https://aistudio.google.com/apikey) (the Generative Language API tier
+used by `@ai-sdk/google` — **not** paid Vertex AI).
 
-The scheduler runs in its **own worker process** (`worker:scheduler`) — there is no in-process
-scheduling in this phase; all four worker processes above must be running (see
-[Running the workers](#running-the-workers)). The scheduler worker registers a repeatable BullMQ
-job on boot (`onApplicationBootstrap`) and fires every `SUMMARY_INTERVAL_MS`.
+</details>
 
-To demo without waiting a full day, either:
-- set `SUMMARY_INTERVAL_MS=60000` (1 minute) in `.env` and restart `worker:scheduler`, **or**
-- `POST /summaries/run` (requires `Authorization: Bearer <access token>`, served by the main API)
-  enqueues the same scheduler job immediately — `202 { "data": { "enqueued": true } }`.
+<details>
+<summary><b><code>frontend/.env.local</code></b> — copy from <code>.env.example</code></summary>
 
-Send a few messages in a group, wait for the next tick (or trigger it manually), and an
-`AI_SUMMARY` message appears in that group's chat live, via the same `new_message` socket
-broadcast as any other message. A group with no new messages in the window, or one already
-summarized for the current window, is skipped.
+| Variable | Purpose |
+|---|---|
+| `BACKEND_ORIGIN` | Where Next rewrites `/api/*`. **Server-only** — no `NEXT_PUBLIC_` prefix, so it never reaches client bundles |
+| `NEXT_PUBLIC_SOCKET_URL` | Backend origin for the WebSocket — direct, because sockets don't proxy |
+| `NEXT_PUBLIC_GOOGLE_CLIENT_ID` | Must equal the backend's `GOOGLE_CLIENT_ID`. The button hides itself if unset |
+| `NEXT_PUBLIC_SITE_URL` | Public origin of this app, used as `metadataBase` for Open Graph. Inlined at **build** time |
 
-### Demo — run the whole pipeline end to end
-
-Prerequisites: `docker compose up -d` (Postgres + Redis), a real `GOOGLE_GENERATIVE_AI_API_KEY` in
-`backend/.env` (see [Get a free key](#get-a-free-key)), and a build — the workers run from `dist/`,
-so run `npm run build` first. Have the frontend open (or any socket client joined to a group) so you
-can watch the Daily Summary card arrive live.
-
-**Full run — API + all four workers.** One terminal for the API, plus one per worker (or collapse
-the four workers into a single terminal with `workers:all`):
-
-```bash
-# terminal 1 — the API (serves REST + holds the Socket.IO connections)
-cd backend && npm run start:prod           # or start:dev
-
-# terminals 2-5 — the four stage workers, each its own process
-npm run worker:scheduler
-npm run worker:ai
-npm run worker:summary
-npm run worker:notification
-# …or all four in one terminal:
-npm run workers:all
-```
-
-Then seed a group and trigger a run instead of waiting 24h:
-
-```bash
-# 1. sign in and copy the access token (.data.accessToken)
-curl -s -X POST http://localhost:3000/auth/login \
-  -H 'content-type: application/json' \
-  -d '{"email":"you@example.com","password":"your-password"}'
-
-# 2. send a few messages in a group (via the UI or POST /groups/:id/messages) so the
-#    window has something to summarize
-
-# 3. trigger the pipeline now
-curl -X POST http://localhost:3000/summaries/run -H "Authorization: Bearer <ACCESS_TOKEN>"
-#    → 202 { "data": { "enqueued": true } }
-```
-
-The scheduler worker fans out one Flow for the active group; `worker:ai` → `worker:summary` →
-`worker:notification` drain it in order, and the `AI_SUMMARY` card appears in that group's chat
-live. (Or set `SUMMARY_INTERVAL_MS=60000` in `.env`, restart `worker:scheduler`, and just wait a
-minute.)
-
-**Durable hand-off demo (memory-light — one worker at a time).** Every job and its parent/child
-dependency state lives in **Redis**, not in a worker's memory, so you can run the stages one at a
-time and watch each queue drain — the clearest way to *show* the pipeline is genuinely distributed,
-and it keeps only 1–2 Node processes alive at once (handy on a small machine):
-
-```bash
-# API already running; a group already has recent messages.
-npm run worker:scheduler         # leave running, then POST /summaries/run → it builds the Flow.
-                                 # generate/save/publish jobs now sit in their Redis queues, waiting.
-npm run worker:ai                # drains generate-ai-summary (Gemini); the save job now waits → Ctrl-C
-npm run worker:summary           # drains save-summary (row persisted); the publish job now waits → Ctrl-C
-npm run worker:notification      # drains publish-summary → connected clients get the Daily Summary card
-```
-
-Each stage's job waits in its queue until the worker that drains it is started, so the summary still
-completes in the correct order even though the four workers were never alive at the same time — that
-durability is the whole point of pushing the work through Redis-backed queues.
-
-### A note on the Flow shape
-
-The queues (`scheduler-queue`/`summary-queue`/`ai-queue`/`notification-queue`), the workers, the
-four child stages (`fetch-messages`, `generate-ai-summary`, `save-summary`, `publish-summary`), the
-`group-summary` parent, and the concurrency defaults all follow the assignment.
-
-One implementation detail worth knowing: the parent's children are arranged as a **nested chain**
-rather than four flat siblings, because the stages are strictly sequential — each reads the previous
-stage's output via `getChildrenValues()`. Four flat children under one parent would run in
-**parallel**, which a `fetch → generate → save → publish` pipeline cannot do. The `group-summary`
-parent still completes only after the whole chain succeeds, and `failParentOnFailure` bubbles any
-stage failure up so the flow fails cleanly. The transcript is passed `fetch → generate` as the job's
-return value, so the ai-worker needs no database access at all.
+</details>
 
 ---
 
-## Project structure
+## HTTP API
 
+Every response shares one envelope:
+
+```jsonc
+// success
+{ "success": true, "data": { }, "message": "…", "meta": { } }
+
+// failure
+{ "success": false, "error": { "code": "…", "message": "…", "details": [ ] } }
 ```
-backend/                 # NestJS API
-  src/
-    config/              # env loading + startup validation
-    common/              # filters, interceptors, guards, decorators, pipes, DTOs, utils
-    prisma/              # PrismaService + module
-    auth/                # register/login/refresh/logout/google, JWT strategy, token rotation
-    users/               # user persistence + serialization entity
-    groups/              # groups + membership + join
-    messages/            # message create + cursor-paginated history
-    summary/             # Phase 4/5: summary service + per-stage BullMQ processors/Flow
-    ai/                  # Phase 4: Gemini wrapper (Vercel AI SDK), vendor isolated
-    workers/             # Phase 5: standalone worker entry points (one per queue)
-  prisma/
-    schema.prisma        # data model
-    migrations/          # versioned schema changes
-frontend/                # Next.js app (Phase 2)
-docker-compose.yml       # shared dev services (Postgres, Redis)
+
+Every route is protected by a **global JWT guard**; public routes opt out with `@Public()`.
+
+### Health — public
+
+| Method | Path | Notes |
+|---|---|---|
+| `GET` | `/health` | Liveness — touches nothing, cannot flap |
+| `GET` | `/health/ready` | Readiness — pings Postgres and Redis; `503` if either is down |
+
+Two probes, not one, because they answer different questions. Liveness asks *"should this process be
+restarted?"*; readiness asks *"can it serve traffic right now?"*. A liveness probe that checked the
+database would restart a healthy process during a brief DB blip — turning a partial outage into a
+total one and dropping every in-memory WebSocket connection with it.
+
+### Auth — public
+
+| Method | Path | Body | Notes |
+|---|---|---|---|
+| `POST` | `/auth/register` | `{ email, password, name }` | Returns user + access + refresh |
+| `POST` | `/auth/login` | `{ email, password }` | Generic `401` on any failure — never reveals which field was wrong |
+| `POST` | `/auth/refresh` | `{ refreshToken }` | Rotates the token; replay revokes the whole family |
+| `POST` | `/auth/logout` | `{ refreshToken }` | **Requires** an access token; revokes that session |
+| `POST` | `/auth/google` | `{ idToken }` | Verifies Google's ID token, issues our own JWT |
+
+### Groups — `Authorization: Bearer <access token>`
+
+| Method | Path | Notes |
+|---|---|---|
+| `POST` | `/groups` | Create; the creator becomes `OWNER` |
+| `GET` | `/groups` | Groups the caller belongs to, with member/message counts |
+| `GET` | `/groups/:id` | Detail + members — **members only** |
+| `POST` | `/groups/:id/join` | Join by id |
+| `POST` | `/groups/:id/read` | Mark read up to now — **members only** |
+| `POST` | `/groups/:id/leave` | Leave — **members only** (ownership rules in [Design notes](#design-notes)) |
+| `POST` | `/groups/:id/transfer-ownership` | `{ userId }` — **owner only** |
+
+### Messages — all **members only**
+
+| Method | Path | Notes |
+|---|---|---|
+| `POST` | `/groups/:id/messages` | `{ content }` |
+| `GET` | `/groups/:id/messages?limit=&cursor=` | History, newest first, keyset-paginated |
+| `GET` | `/groups/:id/messages/search?q=` | Case-insensitive substring, newest first, hard-capped |
+| `POST` | `/groups/:id/messages/upload` | Multipart: `file`, optional `content` caption |
+| `PATCH` | `/groups/:id/messages/:messageId` | Edit — own `USER` messages only |
+| `DELETE` | `/groups/:id/messages/:messageId` | Soft delete — the row stays so history renders a placeholder |
+| `POST` | `/groups/:id/messages/:messageId/reactions` | `{ emoji }` — one endpoint toggles add/remove |
+
+### Summaries
+
+| Method | Path | Notes |
+|---|---|---|
+| `POST` | `/summaries/run` | Enqueue the scheduler job immediately → `202 { "enqueued": true }`. Useful for demos instead of waiting 24h |
+
+---
+
+## WebSocket API
+
+The socket handshake is authenticated by the same access token; identity is taken from the verified
+token on the server, **never** from the client payload. Each group is one Socket.IO room,
+`group:<groupId>`.
+
+<table>
+<tr><th align="left">Client → server</th><th align="left">Server → client</th></tr>
+<tr valign="top"><td>
+
+| Event | Purpose |
+|---|---|
+| `join_group` | Subscribe to a group's room |
+| `leave_group` | Unsubscribe |
+| `send_message` | Post a message over the socket |
+| `typing_start` | Begin typing indicator |
+| `typing_stop` | End typing indicator |
+
+</td><td>
+
+| Event | Purpose |
+|---|---|
+| `new_message` | A message was posted (**including AI summaries**) |
+| `message_updated` | Edited or soft-deleted |
+| `reaction_updated` | The full reaction set for a message |
+| `member_joined` / `member_left` | Membership changed |
+| `owner_changed` | Ownership transferred or auto-promoted |
+| `read_receipt` | Someone's read cursor advanced |
+| `user_typing` | Typing indicator |
+| `presence` | Who is currently online in the room |
+
+</td></tr>
+</table>
+
+These names are a **cross-process contract** with three consumers that no compiler checks:
+`ChatGateway`, `NotificationPublisher` (in a worker with no Socket.IO server at all), and
+`frontend/src/lib/socket/socket-events.ts`. A typo fails *silently* — the emit succeeds, no handler
+is registered, and an AI summary published to `new_mesage` is simply never delivered while the job
+still reports success. They live in one file (`backend/src/chat/chat.constants.ts`) so a rename is a
+compile error rather than a grep across two codebases.
+
+Leaving a group also **evicts that user's live sockets** from the room. Sockets join on `join_group`
+and nothing else removes them, so without this a departed member would keep receiving messages until
+they happened to disconnect.
+
+---
+
+## Design notes
+
+<details>
+<summary><b>Authentication model</b></summary>
+
+- **Access token** — short-lived JWT, verified by signature alone, no database round trip.
+- **Refresh token** — long-lived *opaque* random string; only its **SHA-256 hash** is stored, so a
+  database leak yields nothing usable. A slow hash (argon2/bcrypt) would buy nothing here: the token
+  is already high-entropy, so there is no low-entropy secret to brute-force — only latency on a hot
+  path. Passwords, which *are* low-entropy, use **argon2id**.
+- **Rotation with reuse detection** — every refresh issues a new token in the same family and revokes
+  the old one. Presenting an already-revoked token means it leaked, so the entire family is revoked.
+- **Google sign-in is a token exchange, not a session** — the frontend obtains a Google ID token and
+  POSTs it to `/auth/google`; the backend verifies signature, audience, issuer and `email_verified`,
+  then issues *its own* JWT. Google's token is never used as a session credential.
+- Expired refresh rows are purged by a scheduled job. Only **expired** rows, never merely revoked
+  ones — reuse detection works by finding a revoked row that still exists.
+
+</details>
+
+<details>
+<summary><b>Keyset pagination</b></summary>
+
+History uses keyset (cursor) pagination, not `OFFSET`. Request `?limit=20`; `meta.nextCursor` is an
+opaque token to pass back as `?cursor=…`, and `meta.hasMore` is `false` on the last page.
+
+The predicate is a row-value comparison `(createdAt, id) < (cursor.createdAt, cursor.id)`, written
+as the equivalent `OR` form because Prisma has no tuple-comparison operator. It resolves entirely
+within `@@index([groupId, createdAt, id])`, making it **O(log n) at any depth** — unlike `OFFSET`,
+which scans and discards, and unlike a `createdAt`-only cursor, which skips or repeats rows sharing
+a timestamp. One extra row is fetched (`take: limit + 1`) purely to learn whether another page
+exists, avoiding a second `COUNT`.
+
+</details>
+
+<details>
+<summary><b>Leaving and ownership</b></summary>
+
+A group can never be left ownerless, so `POST /groups/:id/leave` behaves differently by caller:
+
+| Caller | Others remain? | Result |
+|---|---|---|
+| Member | — | Their membership row is deleted |
+| Owner | yes | The **longest-standing** remaining member is promoted, then the caller leaves |
+| Owner | no | The **group is deleted**, and its messages cascade with it |
+
+The response says which happened: `{ left, groupDeleted, newOwnerId }`.
+
+The owner check in `transfer-ownership` runs **inside the database transaction**, not in a guard — a
+guard runs before the transaction opens, so two concurrent transfers could both pass it and leave the
+group with two owners.
+
+`Group.createdBy` is never reassigned. It records who *created* the group and is half of the
+`@@unique([createdBy, name])` constraint; moving it could collide with a group the new owner already
+has under that name.
+
+**Join model.** Any authenticated user holding a group's id may join. Ids are unguessable UUIDv7
+values, so the id acts as a weak capability token shared out of band. Invite tokens with expiry are
+the natural next step and are intentionally out of scope.
+
+</details>
+
+<details>
+<summary><b>File uploads and the rewritten filename</b></summary>
+
+Images and PDFs only, 5 MB max, enforced by `ParseFilePipe` *before* the handler runs — validation
+inspects the actual **bytes**, not the declared type. Two storage backends are chosen at runtime with
+no code change:
+
+| | When | Bytes go to | URL returned |
+|---|---|---|---|
+| **Supabase Storage** | `SUPABASE_URL` + `SUPABASE_SERVICE_KEY` set | Supabase bucket via the Storage REST API | Absolute public URL |
+| **Local disk** | either unset | `backend/uploads/<groupId>/` | `/api/uploads/…` via the Next proxy |
+
+The fallback exists so uploads work on a fresh clone with no external account. The service-role key
+is server-side only and never reaches the browser.
+
+> **Why the stored filename is rewritten.** The extension is derived from the *validated MIME type*,
+> never from the uploader's filename. Express serves static files with a `Content-Type` taken from the
+> **extension**, while validation checked the **bytes** — so preserving a user-supplied extension
+> would let a real PNG named `evil.html` come back as `text/html` from the app's own origin. That is
+> stored XSS with the access token in `localStorage`. Local uploads are additionally served with
+> `nosniff` and a `sandbox` CSP.
+
+</details>
+
+<details>
+<summary><b>Running and demoing the AI pipeline</b></summary>
+
+All four workers must be running for summaries to be generated and broadcast — the API process runs
+no summary stage itself.
+
+```bash
+npm run worker:scheduler      # scheduler-queue — the repeatable tick, builds one Flow per active group
+npm run worker:ai             # ai-queue — pure Gemini, needs no DB access
+npm run worker:summary        # summary-queue — fetch-messages, save-summary, group-summary parent
+npm run worker:notification   # notification-queue — publish-summary
+npm run workers:all           # all four in one terminal
 ```
+
+To demo without waiting a day, either set `SUMMARY_INTERVAL_MS=60000` and restart the scheduler, or:
+
+```bash
+curl -X POST http://localhost:3000/summaries/run -H "Authorization: Bearer <ACCESS_TOKEN>"
+#  → 202 { "data": { "enqueued": true } }
+```
+
+Send a few messages in a group first, then trigger. An `AI_SUMMARY` card appears in that group's chat
+live, over the same `new_message` broadcast as any other message. Groups with no new messages in the
+window, or already summarized for it, are skipped.
+
+**Durable hand-off demo.** Because state lives in Redis, run the stages one at a time and Ctrl-C
+between each — the summary still completes in order even though the workers were never alive
+simultaneously. This is also the memory-light way to demo on a small machine.
+
+</details>
 
 ---
 
 ## Testing
 
 ```bash
-docker compose up -d      # Postgres must be running
-npm run test:e2e
+docker compose up -d          # Postgres must be running
+cd backend && npm run test:e2e
 ```
 
-End-to-end tests cover the full auth flows (including refresh rotation and reuse detection),
-Google sign-in (with only Google's token verification stubbed), the membership authorization
-boundary, and cursor pagination.
+End-to-end tests cover the full auth flows (including refresh rotation and reuse detection), Google
+sign-in with only Google's token verification stubbed, the membership authorization boundary, and
+cursor pagination. Unit tests sit beside the code as `*.spec.ts`.
+
+Other quality gates, from `backend/`:
+
+```bash
+npm run lint          # eslint, reports only        npm run lint:fix
+npm run format:check  # prettier, check only        npm run format
+npm run build         # compile to dist/
+```
+
+The frontend exposes `npm run lint` and `npm run build`. Run these **one at a time** rather than
+chained — see [Troubleshooting](#troubleshooting).
+
+---
+
+## Troubleshooting
+
+| Symptom | Cause and fix |
+|---|---|
+| `dev.ps1` exits with *"port 3000/3001 is already in use"* | A previous run is still alive. Ctrl-C it, or `Stop-Process -Id <pid> -Force` using the PIDs the script prints. It aborts deliberately rather than failing 40s later on `EADDRINUSE` |
+| Workers die with `Cannot find module './scheduler-worker.module'` | They started before `dist/` was rebuilt. Run through `dev.ps1`, which gates them on the API's port, or `npm run build` first |
+| Every page 404s but the server responds | A force-killed `next dev` left `.next` in a bad state. `.\dev.ps1 -Clean` |
+| `JavaScript heap out of memory` during build or lint | Run `tsc`, `eslint` and `next build` **one at a time**, never chained. On a low-RAM machine also avoid running Prisma Studio alongside the full stack |
+| Readiness returns 503 | Postgres or Redis is unreachable. `docker compose ps`, then check `DATABASE_URL` uses port `55432` |
+| Google button missing | `NEXT_PUBLIC_GOOGLE_CLIENT_ID` is unset — the component hides itself by design |
+| `docker compose` hangs | The Docker CLI can wedge under memory pressure while the containers stay healthy. `dev.ps1` bounds every Docker call and probes TCP sockets instead; restart Docker Desktop if it persists |
+
+---
+
+## Further reading
+
+The reasoning behind each phase is written up in `docs/`:
+
+| Path | What's in it |
+|---|---|
+| [`docs/learning/`](docs/learning) | Phase-by-phase notes, from schema design through backend hardening |
+| [`docs/superpowers/specs/`](docs/superpowers/specs) | Design documents written before each phase |
+| [`docs/superpowers/plans/`](docs/superpowers/plans) | Implementation plans |
+| [`docs/study-guide/`](docs/study-guide) | Interactive guide: REST, polling, WebSockets, background jobs, distributed systems |
+
+---
+
+<p align="center"><sub>Built by <a href="https://github.com/asimrazadev10">Asim Raza</a></sub></p>
