@@ -1,3 +1,15 @@
+/**
+ * HOW THIS FILE WORKS
+ *   1. create() — insert the group AND its OWNER membership in one transaction.
+ *   2. findMyGroups() — the caller's groups with member/message counts, newest first.
+ *   3. findOne() — one group with its ordered member list.
+ *   4. join() — add the caller as a MEMBER and emit MEMBER_JOINED.
+ *   5. assertMember() — THE membership rule, shared by the HTTP guard and the socket gateway.
+ *   6. markRead() — stamp lastReadAt and emit READ_MARKED.
+ *
+ * The authorization rule lives in step 5; GroupMemberGuard and ChatGateway both call it, so HTTP
+ * and WebSocket can never diverge on who may read a group.
+ */
 import {
   ConflictException,
   ForbiddenException,
@@ -39,10 +51,12 @@ export class GroupsService {
   async create(userId: string, name: string): Promise<Group> {
     try {
       return await this.prisma.$transaction(async (tx) => {
+        // Step 1. Note `tx`, not `this.prisma` — using the latter would escape the transaction.
         const group = await tx.group.create({
           data: { name, createdBy: userId },
         });
 
+        // The creator is OWNER, so every group has exactly one from the moment it exists.
         await tx.groupMember.create({
           data: { groupId: group.id, userId, role: MemberRole.OWNER },
         });
@@ -60,6 +74,7 @@ export class GroupsService {
       ) {
         throw new ConflictException('You already have a group with this name');
       }
+      // Anything else is unexpected and goes to the global filter untouched.
       throw error;
     }
   }
@@ -71,9 +86,11 @@ export class GroupsService {
    */
   findMyGroups(userId: string) {
     return this.prisma.group.findMany({
+      // Step 2. `some` on members is the authorisation — you cannot see a group you are not in.
       where: { members: { some: { userId } } },
       orderBy: { createdAt: 'desc' },
       include: {
+        // _count is computed by Postgres, so the list needs no follow-up queries.
         _count: { select: { members: true, messages: true } },
       },
     });
@@ -89,7 +106,9 @@ export class GroupsService {
       where: { id: groupId },
       include: {
         members: {
+          // Step 3. Join order, so the list is stable between reloads.
           orderBy: { joinedAt: 'asc' },
+          // The shared select — join() must return this same shape.
           select: GROUP_MEMBER_SELECT,
         },
       },
@@ -107,6 +126,7 @@ export class GroupsService {
    * design and README.
    */
   async join(userId: string, groupId: string): Promise<Group> {
+    // Step 4. Checked first so joining a non-existent group is 404, not a foreign-key error.
     const group = await this.prisma.group.findUnique({
       where: { id: groupId },
     });
@@ -142,6 +162,7 @@ export class GroupsService {
       throw error;
     }
 
+    // The group itself is returned either way, so the client can navigate straight into it.
     return group;
   }
 
@@ -154,12 +175,16 @@ export class GroupsService {
    * only need the assertion (ChatGateway) simply ignore the return.
    */
   async assertMember(userId: string, groupId: string): Promise<GroupMember> {
+    // Step 5. Checked before the query: a malformed id would otherwise throw a Prisma error,
+    // and its distinct shape would reveal that the id was merely invalid rather than forbidden.
     if (!isUuid(groupId)) {
       throw new ForbiddenException(NOT_A_MEMBER_MESSAGE);
     }
+    // The composite unique key, so this is a single indexed lookup.
     const membership = await this.prisma.groupMember.findUnique({
       where: { groupId_userId: { groupId, userId } },
     });
+    // The SAME message and status as the malformed-id branch above — that is the point.
     if (!membership) {
       throw new ForbiddenException(NOT_A_MEMBER_MESSAGE);
     }
@@ -174,6 +199,7 @@ export class GroupsService {
     userId: string,
     groupId: string,
   ): Promise<{ lastReadAt: Date }> {
+    // Step 6. One timestamp, used for the write, the event and the response, so all three agree.
     const lastReadAt = new Date();
     await this.prisma.groupMember.update({
       where: { groupId_userId: { groupId, userId } },

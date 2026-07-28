@@ -1,3 +1,9 @@
+/**
+ * HOW THIS FILE WORKS
+ *   1. Declare the controller.
+ *   2. Provide GroupsService and GroupMemberGuard.
+ *   3. Export BOTH — the guard for other modules' controllers, the service for ChatGateway.
+ */
 import { Module } from '@nestjs/common';
 
 import { GroupMemberGuard } from './group-member.guard';
@@ -17,6 +23,7 @@ import { GroupsService } from './groups.service';
 @Module({
   controllers: [GroupsController],
   providers: [GroupsService, GroupMemberGuard],
+  // Step 3. Exporting the guard is what stops consumers re-providing it and its dependency.
   exports: [GroupsService, GroupMemberGuard],
 })
 export class GroupsModule {}

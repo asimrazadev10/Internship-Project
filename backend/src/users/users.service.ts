@@ -1,3 +1,11 @@
+/**
+ * HOW THIS FILE WORKS
+ *   1. findById() / findByEmail() — single-row lookups on unique columns.
+ *   2. findByProviderId() — lookup on the composite (provider, providerId) key, for Google.
+ *   3. create() — insert, letting the database enforce email uniqueness.
+ *
+ * Persistence only. Hashing, tokens and verification all live in the auth module.
+ */
 import { Injectable } from '@nestjs/common';
 import { AuthProvider, Prisma, User } from '@prisma/client';
 
@@ -16,6 +24,7 @@ export class UsersService {
     return this.prisma.user.findUnique({ where: { id } });
   }
 
+  // Callers pass an already-normalised email; the DTOs guarantee that.
   findByEmail(email: string): Promise<User | null> {
     return this.prisma.user.findUnique({ where: { email } });
   }
@@ -28,6 +37,7 @@ export class UsersService {
     provider: AuthProvider,
     providerId: string,
   ): Promise<User | null> {
+    // Step 2. The composite unique key — identity is the provider's sub, not the email.
     return this.prisma.user.findUnique({
       where: { provider_providerId: { provider, providerId } },
     });
@@ -40,6 +50,7 @@ export class UsersService {
    * be both racy and a duplication of a rule the schema already states.
    */
   create(data: Prisma.UserCreateInput): Promise<User> {
+    // Returns the full row, password hash included — callers wrap it in UserEntity before responding.
     return this.prisma.user.create({ data });
   }
 }

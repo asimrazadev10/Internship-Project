@@ -1,3 +1,14 @@
+/**
+ * HOW THIS FILE WORKS
+ *   1. POST / — create a group. No member guard: there is no group to be a member of yet.
+ *   2. GET / — list the caller's own groups. Scoped by user id, so no guard is needed.
+ *   3. GET /:id — read one group. Member-only.
+ *   4. POST /:id/join — join. No member guard, by definition.
+ *   5. POST /:id/read — mark read. Member-only.
+ *
+ * The guard is applied per route rather than on the class, because three of these five routes
+ * cannot require membership.
+ */
 import {
   Body,
   Controller,
@@ -28,22 +39,26 @@ export class GroupsController {
 
   @Post()
   @ResponseMessage('Group created')
+  // Step 1. Creator comes from the token; the service also makes them the first member.
   create(@CurrentUser('userId') userId: string, @Body() dto: CreateGroupDto) {
     return this.groupsService.create(userId, dto.name);
   }
 
   @Get()
+  // Step 2. The user id in the query is itself the authorisation — you only ever see your own.
   findMine(@CurrentUser('userId') userId: string) {
     return this.groupsService.findMyGroups(userId);
   }
 
   @Get(':id')
+  // Step 3. Member-only, so a non-member cannot even learn the group exists.
   @UseGuards(GroupMemberGuard)
   findOne(@Param('id', ParseUuidPipe) id: string) {
     return this.groupsService.findOne(id);
   }
 
   @Post(':id/join')
+  // 200 not 201: joining twice is idempotent and creates nothing the second time.
   @HttpCode(HttpStatus.OK)
   @ResponseMessage('Joined group')
   join(

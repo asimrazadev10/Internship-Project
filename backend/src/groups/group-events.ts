@@ -1,3 +1,10 @@
+/**
+ * HOW THIS FILE WORKS
+ *   1. MEMBER_JOINED and its payload — emitted when a membership row is created.
+ *   2. READ_MARKED and its payload — emitted when a member marks the group read.
+ *
+ * The groups module's half of the in-process event contract; ChatGateway is the only listener.
+ */
 import { MemberRole } from '@prisma/client';
 
 /** Emitted after a new membership row is persisted (a user joins a group). Any transport listens. */
@@ -11,11 +18,13 @@ export const MEMBER_JOINED = 'member.joined';
 export interface JoinedMember {
   role: MemberRole;
   joinedAt: Date;
+  // Nullable: a member who has never opened the group has no read timestamp yet.
   lastReadAt: Date | null;
   user: { id: string; name: string; email: string };
 }
 
 export interface MemberJoinedPayload {
+  // groupId is carried separately because the gateway needs it to resolve the room.
   groupId: string;
   member: JoinedMember;
 }

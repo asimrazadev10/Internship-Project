@@ -1,3 +1,12 @@
+/**
+ * HOW THIS FILE WORKS
+ *   1. Pull the request, typed so params.id is known to be the group id.
+ *   2. Reject if req.user is missing — it should never be, given the global guard runs first.
+ *   3. Delegate to GroupsService.assertMember, which throws 403 on a non-member.
+ *   4. Stash the loaded membership on the request so handlers need not re-query.
+ *
+ * The membership rule itself is NOT implemented here — the socket path calls the same method.
+ */
 import {
   CanActivate,
   ExecutionContext,
@@ -44,6 +53,7 @@ export class GroupMemberGuard implements CanActivate {
     >();
 
     const user = request.user;
+    // Step 2. Defensive — the global JwtAuthGuard should have populated this already.
     if (!user) {
       throw new UnauthorizedException();
     }
@@ -56,6 +66,7 @@ export class GroupMemberGuard implements CanActivate {
 
     // Surface the loaded membership so handlers needing the caller's role don't re-query.
     request.groupMembership = membership;
+    // Step 4. `true` lets the request through; every rejection above was a thrown exception.
     return true;
   }
 }

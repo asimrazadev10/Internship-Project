@@ -1,3 +1,9 @@
+/**
+ * HOW THIS FILE WORKS
+ *   1. Trim the name, then reject it if empty, then cap its length.
+ *
+ * The trim ordering matters for the unique constraint — see the comment below.
+ */
 import { IsString, MaxLength, MinLength } from 'class-validator';
 
 import { Trim } from '../../common/decorators/trim.decorator';
