@@ -26,6 +26,10 @@ import { GROUP_MEMBER_SELECT } from './group.constants';
 import {
   MEMBER_JOINED,
   MemberJoinedPayload,
+  MEMBER_LEFT,
+  MemberLeftPayload,
+  OWNER_CHANGED,
+  OwnerChangedPayload,
   READ_MARKED,
   ReadMarkedPayload,
 } from './group-events';
@@ -164,6 +168,74 @@ export class GroupsService {
 
     // The group itself is returned either way, so the client can navigate straight into it.
     return group;
+  }
+
+  /**
+   * Leave a group. The caller's membership always goes; what else happens depends on their role.
+   *
+   * An OWNER cannot simply vanish — a group with no OWNER is one nobody can administer and
+   * nothing can repair. So the owner's departure either promotes the longest-standing remaining
+   * member, or, if there is no one left, deletes the group outright (Message and GroupMember
+   * both cascade from Group).
+   *
+   * The whole thing is one transaction: a crash between "promote successor" and "delete owner"
+   * would leave exactly the ownerless group this method exists to prevent.
+   */
+  async leave(
+    userId: string,
+    groupId: string,
+  ): Promise<{ left: true; groupDeleted: boolean; newOwnerId: string | null }> {
+    const outcome = await this.prisma.$transaction(async (tx) => {
+      // Re-read inside the transaction: the guard's copy was loaded before this opened.
+      const me = await tx.groupMember.findUnique({
+        where: { groupId_userId: { groupId, userId } },
+      });
+      if (!me) {
+        throw new ForbiddenException(NOT_A_MEMBER_MESSAGE);
+      }
+
+      if (me.role !== MemberRole.OWNER) {
+        await tx.groupMember.delete({ where: { id: me.id } });
+        return { groupDeleted: false, newOwnerId: null };
+      }
+
+      // Longest-standing successor; id breaks ties for members who joined in the same millisecond.
+      const successor = await tx.groupMember.findFirst({
+        where: { groupId, userId: { not: userId } },
+        orderBy: [{ joinedAt: 'asc' }, { id: 'asc' }],
+      });
+
+      if (!successor) {
+        // Sole member. Deleting the group cascades to its members and messages.
+        await tx.group.delete({ where: { id: groupId } });
+        return { groupDeleted: true, newOwnerId: null };
+      }
+
+      await tx.groupMember.update({
+        where: { id: successor.id },
+        data: { role: MemberRole.OWNER },
+      });
+      await tx.groupMember.delete({ where: { id: me.id } });
+      return { groupDeleted: false, newOwnerId: successor.userId };
+    });
+
+    // Emitted after the transaction commits, so no listener can observe uncommitted state.
+    if (outcome.newOwnerId) {
+      this.events.emit(OWNER_CHANGED, {
+        groupId,
+        previousOwnerId: userId,
+        newOwnerId: outcome.newOwnerId,
+      } satisfies OwnerChangedPayload);
+    }
+    // Not emitted when the group is deleted: no room remains for anyone to hear it in.
+    if (!outcome.groupDeleted) {
+      this.events.emit(MEMBER_LEFT, {
+        groupId,
+        userId,
+      } satisfies MemberLeftPayload);
+    }
+
+    return { left: true, ...outcome };
   }
 
   /**

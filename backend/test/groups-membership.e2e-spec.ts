@@ -68,7 +68,9 @@ describe('GroupsService leave/transfer (e2e)', () => {
   it('a plain member leaving removes only their membership', async () => {
     const owner = await mkUser('own');
     const member = await mkUser('mem');
-    const groupId = await mkGroup(owner, [{ id: member, joinedAt: new Date() }]);
+    const groupId = await mkGroup(owner, [
+      { id: member, joinedAt: new Date() },
+    ]);
 
     const result = await groups.leave(member, groupId);
 
@@ -134,7 +136,9 @@ describe('GroupsService leave/transfer (e2e)', () => {
       groupDeleted: true,
       newOwnerId: null,
     });
-    expect(await prisma.group.findUnique({ where: { id: groupId } })).toBeNull();
+    expect(
+      await prisma.group.findUnique({ where: { id: groupId } }),
+    ).toBeNull();
     // Messages cascade from Group, so nothing is orphaned.
     expect(await prisma.message.count({ where: { groupId } })).toBe(0);
   });
