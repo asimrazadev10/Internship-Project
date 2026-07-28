@@ -1,3 +1,13 @@
+/**
+ * HOW THIS FILE WORKS
+ *   1. catch() builds the error body, then decides how loudly to log it.
+ *   2. 5xx is logged with a stack as a fault; 4xx (and 503) at warn without one.
+ *   3. buildError() dispatches on the exception type: Prisma, HttpException, or unknown.
+ *   4. fromHttpException() lifts ValidationPipe's message array into `details`.
+ *   5. codeForStatus() maps an HTTP status to the stable machine-readable code.
+ *
+ * The ONLY global filter — @Catch() with no argument catches everything, Prisma included.
+ */
 import {
   ArgumentsHost,
   Catch,
@@ -35,6 +45,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const response = ctx.getResponse<Response>();
     const request = ctx.getRequest<Request>();
 
+    // Step 1. Shape first, then log — the body's code appears in the log line below.
     const { status, body } = this.buildError(exception);
 
     // 5xx means we broke something and need the stack. 4xx is the client's problem and is
@@ -50,6 +61,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
       status !== HttpStatus.SERVICE_UNAVAILABLE;
 
     if (isFault) {
+      // The stack is the point here — this is something the team has to go and fix.
       this.logger.error(
         `${request.method} ${request.url} -> ${status}`,
         exception instanceof Error ? exception.stack : String(exception),
@@ -66,6 +78,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
       );
     }
 
+    // Written directly to the Express response — a filter bypasses the interceptor entirely.
     response.status(status).json(body);
   }
 
@@ -73,11 +86,13 @@ export class AllExceptionsFilter implements ExceptionFilter {
     status: HttpStatus;
     body: ErrorResponse;
   } {
+    // Step 3. Prisma first, since a Prisma error is not an HttpException.
     if (exception instanceof Prisma.PrismaClientKnownRequestError) {
       const { status, code, message } = mapPrismaError(exception);
       return { status, body: { success: false, error: { code, message } } };
     }
 
+    // Everything the app throws deliberately (NotFound, Forbidden, Conflict) lands here.
     if (exception instanceof HttpException) {
       return this.fromHttpException(exception);
     }
@@ -103,11 +118,13 @@ export class AllExceptionsFilter implements ExceptionFilter {
     // getStatus() is typed as number; every value it returns is an HTTP status, so narrowing to
     // HttpStatus lets the comparisons below share an enum type instead of mixing number/enum.
     const status = exception.getStatus();
+    // The payload is `string | object` — both shapes are handled below.
     const payload = exception.getResponse();
 
     // ValidationPipe throws BadRequestException whose payload carries `message` as an array
     // of constraint strings. Those become `details`, so a client can map failures to fields
     // instead of parsing one concatenated sentence.
+    // Step 4. The array check is what distinguishes a validation failure from any other 400.
     if (
       typeof payload === 'object' &&
       payload !== null &&
@@ -126,6 +143,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
       };
     }
 
+    // Three fallbacks in order: a plain string payload, an object's message, the exception's own.
     const message =
       typeof payload === 'string'
         ? payload
@@ -141,6 +159,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
   }
 
   private codeForStatus(status: HttpStatus): ErrorCodeValue {
+    // Step 5. Explicit cases first; the default only catches statuses not listed here.
     switch (status) {
       case HttpStatus.BAD_REQUEST:
         return ErrorCode.BAD_REQUEST;
@@ -152,6 +171,8 @@ export class AllExceptionsFilter implements ExceptionFilter {
         return ErrorCode.NOT_FOUND;
       case HttpStatus.CONFLICT:
         return ErrorCode.CONFLICT;
+      // Listed explicitly because the range fallback below would flatten it to INTERNAL_ERROR,
+      // telling clients not to retry a condition that is usually transient.
       case HttpStatus.SERVICE_UNAVAILABLE:
         return ErrorCode.SERVICE_UNAVAILABLE;
       default:

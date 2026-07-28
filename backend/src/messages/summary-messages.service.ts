@@ -1,3 +1,12 @@
+/**
+ * HOW THIS FILE WORKS
+ *   1. persistAiSummary() — write an AI_SUMMARY row with no sender, and emit NOTHING.
+ *   2. findForSummary() — the window's USER messages, oldest first, for the transcript.
+ *   3. hasSummarySince() — the idempotency guard the fetch stage calls first.
+ *
+ * Three queries, PrismaService as the only dependency. Called exclusively by SummaryProcessor in
+ * the standalone summary worker.
+ */
 import { Injectable } from '@nestjs/common';
 import { MessageType } from '@prisma/client';
 
@@ -34,6 +43,8 @@ export class SummaryMessagesService {
    * double-broadcasting once the publish stage runs.
    */
   persistAiSummary(groupId: string, content: string) {
+    // Step 1. senderId: null is what marks it as system-authored; MESSAGE_SELECT returns the row
+    // in broadcast shape so the publish stage needs no second read.
     return this.prisma.message.create({
       data: { groupId, senderId: null, content, type: MessageType.AI_SUMMARY },
       select: MESSAGE_SELECT,
@@ -45,11 +56,15 @@ export class SummaryMessagesService {
     return this.prisma.message.findMany({
       where: {
         groupId,
+        // USER only — feeding previous summaries back to the model would compound their errors.
         type: MessageType.USER,
         createdAt: { gte: since },
+        // Soft-deleted messages are excluded: a user who deleted something meant it to be gone.
         deletedAt: null,
       },
+      // Step 2. Chronological, because a transcript out of order reads as a different conversation.
       orderBy: { createdAt: 'asc' },
+      // A narrower select than MESSAGE_SELECT — the model only needs the author name and text.
       select: {
         content: true,
         createdAt: true,
@@ -60,6 +75,7 @@ export class SummaryMessagesService {
 
   /** Idempotency guard: has an AI_SUMMARY already been posted for this group in the window? */
   async hasSummarySince(groupId: string, since: Date): Promise<boolean> {
+    // Step 3. The authoritative duplicate check — it asks Postgres, so it survives a Redis flush.
     const count = await this.prisma.message.count({
       where: {
         groupId,

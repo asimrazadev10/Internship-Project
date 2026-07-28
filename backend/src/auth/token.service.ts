@@ -1,3 +1,14 @@
+/**
+ * HOW THIS FILE WORKS
+ *   1. issueForNewSession() — start a new rotation family: sign an access token, persist a refresh.
+ *   2. rotate() — look the presented token up by hash, then run four checks before reissuing.
+ *   3. The reuse check: a row carrying revokedAt means replay, so burn the whole family.
+ *   4. The rotation itself is a CONDITIONAL update inside a transaction, closing the race.
+ *   5. revokeByToken() — logout; revokes the family, and is idempotent.
+ *   6. Private helpers: sign, persist, revokeFamily, generate, hash.
+ *
+ * Two token designs on purpose — stateless JWT for access, stateful opaque string for refresh.
+ */
 import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
@@ -36,6 +47,7 @@ import { AuthTokens, JwtPayload } from './interfaces/auth.types';
 @Injectable()
 export class TokenService {
   private readonly logger = new Logger(TokenService.name);
+  // Parsed once at construction rather than on every issue.
   private readonly refreshTtlMs: number;
 
   constructor(
@@ -43,6 +55,7 @@ export class TokenService {
     private readonly prisma: PrismaService,
     config: ConfigService,
   ) {
+    // "7d" -> milliseconds. The access token's expiry is handled by JwtModule, not here.
     this.refreshTtlMs = parseDurationToMs(
       config.getOrThrow<string>('JWT_REFRESH_EXPIRES_IN'),
     );
@@ -53,6 +66,7 @@ export class TokenService {
    * A new session starts a new rotation family.
    */
   async issueForNewSession(user: User): Promise<AuthTokens> {
+    // Step 1. A new family id per session, so revoking one login cannot log out another device.
     const familyId = randomUUID();
     return {
       accessToken: await this.signAccessToken(user),
@@ -65,6 +79,7 @@ export class TokenService {
    * Returns the user as well, so the caller can re-issue an access token and shape the response.
    */
   async rotate(rawToken: string): Promise<{ user: User } & AuthTokens> {
+    // Step 2. Looked up by hash — the raw token is never stored, so it cannot be searched for.
     const tokenHash = this.hashToken(rawToken);
     const existing = await this.prisma.refreshToken.findUnique({
       where: { tokenHash },
@@ -76,6 +91,7 @@ export class TokenService {
     }
 
     // Already consumed or explicitly revoked. Presenting it again is a replay: burn the family.
+    // Step 3. This check is why the purge job must never delete revoked-but-unexpired rows.
     if (existing.revokedAt) {
       await this.revokeFamily(existing.familyId);
       this.logger.warn(
@@ -84,6 +100,7 @@ export class TokenService {
       throw new UnauthorizedException('Refresh token reuse detected');
     }
 
+    // Checked in code rather than in the query, so expiry gets its own distinct message.
     if (existing.expiresAt.getTime() <= Date.now()) {
       throw new UnauthorizedException('Refresh token expired');
     }
@@ -101,6 +118,7 @@ export class TokenService {
     // is 0 and we treat it as reuse. This closes the race where two requests present the same
     // token simultaneously and both try to rotate it.
     const newRawToken = await this.prisma.$transaction(async (tx) => {
+      // Step 4. `revokedAt: null` in the WHERE is the compare-and-swap that makes this atomic.
       const claimed = await tx.refreshToken.updateMany({
         where: { id: existing.id, revokedAt: null },
         data: { revokedAt: new Date() },
@@ -110,6 +128,7 @@ export class TokenService {
         return null; // lost the race — handled as reuse below
       }
 
+      // The replacement joins the SAME family, so the chain stays revocable as a unit.
       const raw = this.generateRawToken();
       await tx.refreshToken.create({
         data: {
@@ -122,6 +141,7 @@ export class TokenService {
       return raw;
     });
 
+    // null means another request won the claim — indistinguishable from replay, so treat it as one.
     if (newRawToken === null) {
       await this.revokeFamily(existing.familyId);
       this.logger.warn(
@@ -130,6 +150,7 @@ export class TokenService {
       throw new UnauthorizedException('Refresh token reuse detected');
     }
 
+    // The user is returned too, so AuthService needs no second lookup.
     return {
       user,
       accessToken: await this.signAccessToken(user),
@@ -145,12 +166,14 @@ export class TokenService {
     const existing = await this.prisma.refreshToken.findUnique({
       where: { tokenHash: this.hashToken(rawToken) },
     });
+    // Step 5. No error when absent — logging out twice must not fail.
     if (existing) {
       await this.revokeFamily(existing.familyId);
     }
   }
 
   private signAccessToken(user: User): Promise<string> {
+    // Deliberately minimal claims — see JwtPayload for why nothing else is embedded.
     const payload: JwtPayload = { sub: user.id, email: user.email };
     // Secret and expiry come from JwtModule's registration (JWT_ACCESS_SECRET / _EXPIRES_IN).
     return this.jwt.signAsync(payload);
@@ -161,6 +184,7 @@ export class TokenService {
     familyId: string,
   ): Promise<string> {
     const raw = this.generateRawToken();
+    // Only the hash is stored; `raw` is returned to the caller and never written down.
     await this.prisma.refreshToken.create({
       data: {
         userId,
@@ -173,6 +197,7 @@ export class TokenService {
   }
 
   private revokeFamily(familyId: string): Promise<unknown> {
+    // `revokedAt: null` in the WHERE keeps the original timestamp on already-revoked rows.
     return this.prisma.refreshToken.updateMany({
       where: { familyId, revokedAt: null },
       data: { revokedAt: new Date() },
@@ -181,6 +206,7 @@ export class TokenService {
 
   /** Opaque CSPRNG output; the DB row carries the identity. Size/encoding: auth.constants.ts. */
   private generateRawToken(): string {
+    // randomBytes, not randomUUID — 48 bytes carries far more entropy than a v4 UUID.
     return randomBytes(REFRESH_TOKEN_BYTES).toString(REFRESH_TOKEN_ENCODING);
   }
 
@@ -190,6 +216,7 @@ export class TokenService {
    * refresh. Hashing exists here solely so a leaked database table contains no usable tokens.
    */
   private hashToken(rawToken: string): string {
+    // Unsalted on purpose: the lookup is by hash, so the same input must give the same output.
     return createHash(REFRESH_TOKEN_HASH_ALGORITHM)
       .update(rawToken)
       .digest('hex');

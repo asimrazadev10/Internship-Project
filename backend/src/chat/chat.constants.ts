@@ -1,4 +1,14 @@
 /**
+ * HOW THIS FILE WORKS
+ *   1. ROOM_PREFIX and roomFor() — one Socket.IO room per group.
+ *   2. groupIdFromRoom() — the inverse, returning null for non-group rooms.
+ *   3. CLIENT_EVENTS — client to server; each has a @SubscribeMessage handler.
+ *   4. SERVER_EVENTS — server to client.
+ *
+ * A cross-process contract, not an implementation detail: a typo here fails silently.
+ */
+
+/**
  * The Socket.IO wire contract: room naming plus every event name that crosses the socket.
  *
  * These strings are a CROSS-PROCESS contract, not an implementation detail. Three consumers must
@@ -23,16 +33,19 @@
 export const ROOM_PREFIX = 'group:';
 
 /** Socket.IO room name for a group's chat: `group:<groupId>`. */
+// Step 1. Shared with NotificationPublisher so the worker targets the same room the gateway uses.
 export const roomFor = (groupId: string): string => `${ROOM_PREFIX}${groupId}`;
 
 /**
  * Inverse of `roomFor`. Returns null for anything that is not a group room — every socket is also
  * in a private room named after its own id, so callers iterating `socket.rooms` must filter.
  */
+// Step 2. The null return is what lets callers filter socket.rooms in one pass.
 export const groupIdFromRoom = (room: string): string | null =>
   room.startsWith(ROOM_PREFIX) ? room.slice(ROOM_PREFIX.length) : null;
 
 /** Client → server. Each one has a matching @SubscribeMessage handler on ChatGateway. */
+// Step 3. `as const` so the values are literal types, not widened to string.
 export const CLIENT_EVENTS = {
   JOIN_GROUP: 'join_group',
   LEAVE_GROUP: 'leave_group',
@@ -42,6 +55,7 @@ export const CLIENT_EVENTS = {
 } as const;
 
 /** Server → client. */
+// Step 4. NEW_MESSAGE is the one the notification worker also emits, from another process.
 export const SERVER_EVENTS = {
   NEW_MESSAGE: 'new_message',
   MESSAGE_UPDATED: 'message_updated',

@@ -1,3 +1,10 @@
+/**
+ * HOW THIS FILE WORKS
+ *   1. Provide UsersService.
+ *   2. Export it for AuthModule.
+ *
+ * No controller: users are reached through auth, never as their own REST resource.
+ */
 import { Module } from '@nestjs/common';
 
 import { UsersService } from './users.service';

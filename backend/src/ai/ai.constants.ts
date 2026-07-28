@@ -1,4 +1,13 @@
 /**
+ * HOW THIS FILE WORKS
+ *   1. SUMMARY_SYSTEM_PROMPT — the standing instruction sent on every call.
+ *   2. TRANSCRIPT_UNKNOWN_SENDER — fallback author name for a deleted user.
+ *   3. transcriptLine() — renders one message for the model.
+ *   4. summaryUserPrompt() — wraps the joined transcript as the per-call prompt.
+ *   5. AI_RATE_LIMIT — the (env key, default) pairs for the ai-queue limiter.
+ */
+
+/**
  * The AI summarizer's prompt surface and call policy.
  *
  * The prompt IS the behaviour of this feature — it is what decides whether a digest is useful,
@@ -25,19 +34,23 @@
  * ising a user's conversation; the final clause exists so an idle-but-not-empty window produces a
  * short honest line instead of the model inventing significance.
  */
+// Step 1. Sent as `system`, so it applies to every call without being repeated per request.
 export const SUMMARY_SYSTEM_PROMPT =
   'You summarize a group chat from the last day. Produce a concise digest (2-4 sentences) ' +
   'covering the key topics, any decisions, and open questions or action items. ' +
   'Be neutral and factual. If there is nothing substantive, say so briefly.';
 
 /** Shown as the author of a message whose sender row is gone (deleted user) or system-authored. */
+// Step 2. Used by the fetch stage when sender is null.
 export const TRANSCRIPT_UNKNOWN_SENDER = 'Unknown';
 
 /** One transcript line as the model sees it. */
+// Step 3. Shared with the fetch stage so both processes render messages identically.
 export const transcriptLine = (sender: string, content: string): string =>
   `${sender}: ${content}`;
 
 /** The per-call instruction wrapping the joined transcript. */
+// Step 4. The only part of the prompt that changes between calls.
 export const summaryUserPrompt = (transcript: string): string =>
   `Summarize this conversation:\n\n${transcript}`;
 
@@ -55,6 +68,8 @@ export const summaryUserPrompt = (transcript: string): string =>
  * concurrency does: @Processor options evaluate before ConfigService exists.
  */
 export const AI_RATE_LIMIT = {
+  // Step 5. Max calls per window — default 10.
   max: { key: 'AI_RATE_LIMIT_MAX', default: 10 },
+  // The window itself — default 60s, giving the free tier's 10/minute.
   duration: { key: 'AI_RATE_LIMIT_DURATION_MS', default: 60_000 },
 } as const;

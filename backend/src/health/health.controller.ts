@@ -1,3 +1,12 @@
+/**
+ * HOW THIS FILE WORKS
+ *   1. GET /health — liveness. Returns ok unconditionally, touching no dependency.
+ *   2. GET /health/ready — readiness. Runs the probes via HealthService.
+ *   3. Collect the names of any dependency reporting 'down'.
+ *   4. Throw 503 naming them, or return 200 with the full report.
+ *
+ * Two endpoints because liveness and readiness must be able to fail independently.
+ */
 import { Controller, Get, ServiceUnavailableException } from '@nestjs/common';
 
 import { Public } from '../common/decorators/public.decorator';
@@ -20,9 +29,11 @@ export class HealthController {
   constructor(private readonly health: HealthService) {}
 
   /** Liveness. Touches nothing — it cannot fail while the process can answer at all. */
+  // Step 1. @Public() opts this route out of the global JwtAuthGuard.
   @Public()
   @Get()
   live(): { status: 'ok' } {
+    // No dependency call at all — answering IS the proof the process is alive.
     return { status: 'ok' };
   }
 
@@ -33,8 +44,10 @@ export class HealthController {
   @Public()
   @Get('ready')
   async ready(): Promise<{ status: 'ok' } & ReadinessReport> {
+    // Step 2. Both probes run in parallel inside check().
     const report = await this.health.check();
 
+    // Step 3. Report is a flat name -> state map, so filtering it gives the failed names.
     const down = Object.entries(report)
       .filter(([, state]) => state === 'down')
       .map(([name]) => name);
@@ -45,6 +58,7 @@ export class HealthController {
       throw new ServiceUnavailableException(`Not ready: ${down.join(', ')}`);
     }
 
+    // Step 4. Spread the report so a healthy response still shows each dependency's state.
     return { status: 'ok', ...report };
   }
 }

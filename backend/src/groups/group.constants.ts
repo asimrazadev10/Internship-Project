@@ -1,3 +1,8 @@
+/**
+ * HOW THIS FILE WORKS
+ *   1. GROUP_NAME_MAX_LENGTH — the name bound, mirrored by the frontend input.
+ *   2. GROUP_MEMBER_SELECT — the member shape, shared by findOne and join so they cannot drift.
+ */
 import { Prisma } from '@prisma/client';
 
 /**
@@ -21,6 +26,8 @@ export const GROUP_NAME_MAX_LENGTH = 80;
  * Note the explicit `user` field list: never `include: { user: true }`, which would pull the
  * password hash into the result.
  */
+// `satisfies` rather than `as const` here: it type-checks the object against Prisma's select
+// type, so a misspelled field is a compile error rather than a silently ignored key.
 export const GROUP_MEMBER_SELECT = {
   role: true,
   joinedAt: true,

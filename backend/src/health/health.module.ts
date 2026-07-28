@@ -1,3 +1,8 @@
+/**
+ * HOW THIS FILE WORKS
+ *   1. Register scheduler-queue so HealthService can ping the Redis connection already in use.
+ *   2. Declare the controller (two routes) and the service (the probes).
+ */
 import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
 
@@ -11,6 +16,7 @@ import { HealthService } from './health.service';
  * check needs no import.
  */
 @Module({
+  // Step 1. No PrismaModule needed — it is @Global.
   imports: [BullModule.registerQueue({ name: SCHEDULER_QUEUE })],
   controllers: [HealthController],
   providers: [HealthService],

@@ -1,4 +1,11 @@
 /**
+ * HOW THIS FILE WORKS
+ *   1. One export: the message returned identically for "no such group" and "not a member".
+ *
+ * The bar for adding anything here is that the exact wording carries a security guarantee.
+ */
+
+/**
  * Error strings that carry a security invariant.
  *
  * Deliberately NOT a home for user-facing copy in general — copy belongs where it is rendered.

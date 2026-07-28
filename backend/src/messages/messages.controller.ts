@@ -1,3 +1,14 @@
+/**
+ * HOW THIS FILE WORKS
+ *   1. GroupMemberGuard is applied at class level, so every route is member-only.
+ *   2. POST / — send a text message.
+ *   3. GET / — cursor-paginated history; returning { data, meta } triggers the envelope's meta.
+ *   4. GET /search — substring search. Declared BEFORE :messageId routes so it is not shadowed.
+ *   5. POST /upload — validate the file, store the bytes, then persist a message carrying its URL.
+ *   6. PATCH / DELETE :messageId — edit and soft-delete, ownership checked in the service.
+ *
+ * Every route is nested under a group, which is why one guard on the class covers them all.
+ */
 import {
   Body,
   Controller,
@@ -40,6 +51,7 @@ import { ALLOWED_UPLOAD_MIME, MAX_UPLOAD_BYTES } from './upload.constants';
  * param name).
  */
 @Controller('groups/:id/messages')
+// Step 1. One guard on the class rather than repeated on six handlers.
 @UseGuards(GroupMemberGuard)
 export class MessagesController {
   constructor(
@@ -51,6 +63,7 @@ export class MessagesController {
   @ResponseMessage('Message sent')
   create(
     @Param('id', ParseUuidPipe) groupId: string,
+    // Step 2. Sender comes from the token, so it cannot be forged in the body.
     @CurrentUser('userId') userId: string,
     @Body() dto: CreateMessageDto,
   ) {
@@ -60,12 +73,15 @@ export class MessagesController {
   @Get()
   findPage(
     @Param('id', ParseUuidPipe) groupId: string,
+    // Supplies the validated limit and optional cursor.
     @Query() query: PaginationQueryDto,
   ) {
     // Returning { data, meta } signals the ResponseInterceptor to lift meta into the envelope.
     return this.messagesService.findPage(groupId, query.limit, query.cursor);
   }
 
+  // Step 4. Must stay above the ':messageId' routes — Nest matches in declaration order, so
+  // otherwise 'search' would be parsed as a message id and rejected by ParseUuidPipe.
   @Get('search')
   search(
     @Param('id', ParseUuidPipe) groupId: string,
@@ -81,14 +97,18 @@ export class MessagesController {
    */
   @Post('upload')
   @ResponseMessage('File uploaded')
+  // Parses the multipart body and exposes the 'file' field to @UploadedFile below.
   @UseInterceptors(FileInterceptor('file'))
   async upload(
     @Param('id', ParseUuidPipe) groupId: string,
     @CurrentUser('userId') userId: string,
+    // Optional caption; @Body('content') pulls one field out of the multipart form.
     @Body('content') content: string | undefined,
     @UploadedFile(
       new ParseFilePipe({
+        // 422 rather than the default 400 — the request was well-formed, the file was not.
         errorHttpStatusCode: HttpStatus.UNPROCESSABLE_ENTITY,
+        // Step 5. Both validators run BEFORE the handler body, so a bad file never reaches storage.
         validators: [
           new MaxFileSizeValidator({ maxSize: MAX_UPLOAD_BYTES }),
           // Magic-number validation (inspects the actual bytes, so a renamed .exe is caught).
@@ -104,10 +124,12 @@ export class MessagesController {
     )
     file: UploadedFileLike,
   ) {
+    // Bytes first: the message row must not exist if storing the file failed.
     const stored = await this.storage.upload(groupId, file);
     return this.messagesService.createWithAttachment(
       groupId,
       userId,
+      // Trimmed here because the caption arrives as a raw form field, not through a DTO.
       (content ?? '').trim(),
       { url: stored.url, name: stored.name, mime: stored.mime },
     );
@@ -119,6 +141,7 @@ export class MessagesController {
     @Param('id', ParseUuidPipe) groupId: string,
     @Param('messageId', ParseUuidPipe) messageId: string,
     @CurrentUser('userId') userId: string,
+    // Step 6. Reuses CreateMessageDto — an edit has the same one-field shape and same bounds.
     @Body() dto: CreateMessageDto,
   ) {
     return this.messagesService.edit(groupId, messageId, userId, dto.content);
@@ -131,6 +154,7 @@ export class MessagesController {
     @Param('messageId', ParseUuidPipe) messageId: string,
     @CurrentUser('userId') userId: string,
   ) {
+    // Soft delete: returns the tombstoned row rather than 204, so clients can replace it in place.
     return this.messagesService.softDelete(groupId, messageId, userId);
   }
 }

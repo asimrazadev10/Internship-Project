@@ -1,4 +1,11 @@
 /**
+ * HOW THIS FILE WORKS
+ *   1. MESSAGE_CONTENT_MAX_LENGTH — enforced twice, by the DTO and by the socket handler.
+ *   2. SEARCH_RESULT_LIMIT — the hard ceiling on an unpaginated endpoint.
+ *   3. SEARCH_QUERY_MIN/MAX_LENGTH — bounds on the query string itself.
+ */
+
+/**
  * Message-domain policy limits.
  *
  * MESSAGE_CONTENT_MAX_LENGTH has TWO independent enforcement points, which is why it must be
@@ -25,5 +32,6 @@ export const MESSAGE_CONTENT_MAX_LENGTH = 4000;
 export const SEARCH_RESULT_LIMIT = 50;
 
 /** Bounds on the search query itself, enforced by SearchMessagesDto and mirrored by the UI. */
+// A minimum of 1 stops an empty query being treated as "match everything".
 export const SEARCH_QUERY_MIN_LENGTH = 1;
 export const SEARCH_QUERY_MAX_LENGTH = 100;

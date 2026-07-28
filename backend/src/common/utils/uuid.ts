@@ -1,4 +1,10 @@
 /**
+ * HOW THIS FILE WORKS
+ *   1. UUID_RE — the 8-4-4-4-12 hex shape, with no version digit constraint.
+ *   2. isUuid() — a type guard, so a passing value narrows to string.
+ */
+
+/**
  * Lenient UUID format check — accepts ANY version, including v7.
  *
  * Why this exists instead of Nest's built-in ParseUUIDPipe: that pipe (via class-validator's
@@ -7,9 +13,11 @@
  * shape (8-4-4-4-12 hex), which is all we need to keep a bad path param from reaching a
  * Postgres `uuid` column and throwing a low-level error.
  */
+// No version nibble in the pattern — that omission is what makes it accept v7.
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+// `value is string` lets callers use the result to narrow, not just to branch.
 export function isUuid(value: unknown): value is string {
   return typeof value === 'string' && UUID_RE.test(value);
 }

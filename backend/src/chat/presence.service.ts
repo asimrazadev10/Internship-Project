@@ -1,3 +1,12 @@
+/**
+ * HOW THIS FILE WORKS
+ *   1. Resolve the group's room name.
+ *   2. fetchSockets() the room — this spans nodes under the Redis adapter.
+ *   3. Drop the excluded socket, map to user ids, and de-duplicate.
+ *   4. Emit the resulting presence list to the room.
+ *
+ * Counting distinct USERS, not sockets, so one person on two tabs appears once.
+ */
 import { Injectable } from '@nestjs/common';
 import { Server } from 'socket.io';
 
@@ -21,18 +30,23 @@ export class PresenceService {
   async broadcast(
     server: Server,
     groupId: string,
+    // Set on disconnect: the leaving socket is still in the room when this runs.
     excludeSocketId?: string,
   ): Promise<void> {
     const room = roomFor(groupId);
+    // Step 2. Asks every node via Redis, not just this process's local connections.
     const sockets = await server.in(room).fetchSockets();
+    // Step 3. Set de-duplicates, so one user on several tabs counts once.
     const userIds = [
       ...new Set(
         sockets
           .filter((s) => s.id !== excludeSocketId)
           .map((s) => (s.data as AuthData)?.userId)
+          // Type-guard filter drops any socket without auth data attached.
           .filter((id): id is string => Boolean(id)),
       ),
     ];
+    // Step 4. To the room, so every member sees the same list.
     server.to(room).emit(SERVER_EVENTS.PRESENCE, { groupId, userIds });
   }
 }

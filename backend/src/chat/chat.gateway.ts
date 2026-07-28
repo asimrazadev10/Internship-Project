@@ -1,3 +1,15 @@
+/**
+ * HOW THIS FILE WORKS
+ *   1. afterInit() registers the handshake auth middleware on the server.
+ *   2. handleConnection() logs the socket and wires a 'disconnecting' hook to refresh presence.
+ *   3. join_group / leave_group — re-check membership, join or leave the room, rebroadcast presence.
+ *   4. typing_start / typing_stop — ephemeral relay, no database, sender excluded.
+ *   5. send_message — validate, re-check membership, then PERSIST only. It never emits.
+ *   6. The @OnEvent handlers at the bottom are the single outbound broadcast point.
+ *
+ * Inbound handlers write; outbound broadcasting happens only in step 6, so a socket send and a
+ * REST POST converge on exactly the same path.
+ */
 import { ForbiddenException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { OnEvent } from '@nestjs/event-emitter';
@@ -62,23 +74,27 @@ import type { AuthData, AuthedSocket } from './ws.types';
  * @WebSocketServer(). Moving them out would mean binding the Server into another provider at
  * startup — real indirection bought for no reduction in complexity.
  */
+// Empty options on purpose — CORS is applied in RedisIoAdapter, where config is available.
 @WebSocketGateway()
 export class ChatGateway
   implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect
 {
   private readonly logger = new Logger(ChatGateway.name);
 
+  // `!` because Nest assigns it after construction. This is the Server PresenceService borrows.
   @WebSocketServer() server!: Server;
 
   constructor(
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
+    // Supplies assertMember, the same rule the HTTP guard uses.
     private readonly groups: GroupsService,
     private readonly messages: MessagesService,
     private readonly presence: PresenceService,
   ) {}
 
   afterInit(server: Server): void {
+    // Step 1. server.use registers handshake middleware, which runs before any connection completes.
     server.use(createWsAuthMiddleware(this.jwt, this.config));
   }
 
@@ -90,10 +106,13 @@ export class ChatGateway
     this.logger.log(`socket ${socket.id} connected as user ${userId}`);
     // Refresh presence for every group room this socket was in when it goes away. On the
     // 'disconnecting' event the socket is still listed in its rooms, so exclude it explicitly.
+    // Step 2. 'disconnecting', not 'disconnect' — by 'disconnect' the rooms are already gone.
     socket.on('disconnecting', () => {
       for (const room of socket.rooms) {
+        // Filters out the socket's own private room, which is not a group.
         const groupId = groupIdFromRoom(room);
         if (groupId) {
+          // `void` — presence is best-effort and must not block teardown.
           void this.presence.broadcast(this.server, groupId, socket.id);
         }
       }
@@ -116,17 +135,22 @@ export class ChatGateway
     @ConnectedSocket() socket: AuthedSocket,
     @MessageBody() body: { groupId?: string },
   ): Promise<{ ok: true } | { ok: false; error: string }> {
+    // Identity comes from socket.data, never from the client's payload.
     const { userId } = socket.data as AuthData;
     const groupId = body?.groupId ?? '';
     try {
+      // Step 3. The authorisation check — joining a room is what grants the client the feed.
       await this.groups.assertMember(userId, groupId);
       await socket.join(roomFor(groupId));
       this.logger.debug(
         `socket ${socket.id} (user ${userId}) joined ${roomFor(groupId)}`,
       );
+      // Tell the room someone arrived, so member lists update live.
       await this.presence.broadcast(this.server, groupId);
+      // An ack object, not a thrown error — socket handlers have no HTTP status to return.
       return { ok: true };
     } catch (err) {
+      // A genuine authorisation failure gets the shared message, so HTTP and WS agree.
       if (err instanceof ForbiddenException) {
         return { ok: false, error: NOT_A_MEMBER_MESSAGE };
       }
@@ -134,6 +158,7 @@ export class ChatGateway
         'joinGroup failed',
         err instanceof Error ? err.stack : String(err),
       );
+      // Anything unexpected is logged in full but reported generically.
       return { ok: false, error: 'Something went wrong' };
     }
   }
@@ -143,6 +168,7 @@ export class ChatGateway
     @ConnectedSocket() socket: AuthedSocket,
     @MessageBody() body: { groupId?: string },
   ): Promise<{ ok: true }> {
+    // No membership check: leaving a room you are not in is harmless.
     if (body?.groupId) {
       await socket.leave(roomFor(body.groupId));
       this.logger.debug(`socket ${socket.id} left ${roomFor(body.groupId)}`);
@@ -178,8 +204,10 @@ export class ChatGateway
     groupId: string | undefined,
     typing: boolean,
   ): void {
+    // Step 4. Room membership IS the authorisation check here — no query, so keystrokes are free.
     if (!groupId || !socket.rooms.has(roomFor(groupId))) return;
     const { userId } = socket.data as AuthData;
+    // socket.to(...) rather than server.to(...) — this excludes the sender.
     socket
       .to(roomFor(groupId))
       .emit(SERVER_EVENTS.USER_TYPING, { groupId, userId, typing });
@@ -197,7 +225,9 @@ export class ChatGateway
   ) {
     const { userId } = socket.data as AuthData;
     const groupId = body?.groupId ?? '';
+    // Trimmed here because no ValidationPipe runs on socket payloads — this path must self-validate.
     const content = (body?.content ?? '').trim();
+    // The same bound the HTTP DTO enforces, imported rather than repeated.
     if (!content || content.length > MESSAGE_CONTENT_MAX_LENGTH) {
       return {
         ok: false as const,
@@ -205,6 +235,7 @@ export class ChatGateway
       };
     }
     try {
+      // Step 5. Re-checked even though join_group already did — membership can change mid-session.
       await this.groups.assertMember(userId, groupId);
     } catch (err) {
       if (err instanceof ForbiddenException) {
@@ -216,7 +247,9 @@ export class ChatGateway
       );
       return { ok: false as const, error: 'Something went wrong' };
     }
+    // Writes and emits MESSAGE_CREATED internally; the broadcast happens in the handler below.
     const message = await this.messages.create(groupId, userId, content);
+    // The ack lets the sender resolve its optimistic update; the room copy arrives via broadcast.
     return { ok: true as const, message };
   }
 
@@ -225,6 +258,8 @@ export class ChatGateway
    * every path that persists a message. `server.to(room)` reaches all members including the
    * sender, so the sender's own message arrives through the same broadcast, not a separate echo.
    */
+  // Step 6. @OnEvent decouples the writer from the broadcaster — the service need not know a
+  // gateway exists. Note the AI pipeline reaches this same event name via Redis instead.
   @OnEvent(MESSAGE_CREATED)
   broadcastMessage(payload: MessageCreatedPayload): void {
     this.server
@@ -235,6 +270,7 @@ export class ChatGateway
   /** An edited or deleted message — push the new version so clients replace it in place. */
   @OnEvent(MESSAGE_UPDATED)
   broadcastMessageUpdated(payload: MessageUpdatedPayload): void {
+    // A separate event from NEW_MESSAGE so the client replaces rather than appends.
     this.server
       .to(roomFor(payload.message.groupId))
       .emit(SERVER_EVENTS.MESSAGE_UPDATED, payload.message);

@@ -1,3 +1,14 @@
+/**
+ * HOW THIS FILE WORKS
+ *   1. create() / createWithAttachment() — both funnel into persistAndEmit().
+ *   2. edit() / softDelete() — assert ownership first, update, then emit MESSAGE_UPDATED.
+ *   3. assertOwnUserMessage() — the shared ownership check behind both of those.
+ *   4. persistAndEmit() — the single write-then-emit point for new messages.
+ *   5. search() — case-insensitive substring, newest first, hard-capped.
+ *   6. findPage() — keyset (cursor) pagination on (createdAt, id).
+ *
+ * The interactive path only. Every write here emits; nothing in SummaryMessagesService does.
+ */
 import {
   ForbiddenException,
   Injectable,
@@ -35,6 +46,7 @@ export class MessagesService {
   ) {}
 
   async create(groupId: string, senderId: string, content: string) {
+    // Step 1. Called by both the REST POST and ChatGateway.sendMessage.
     return this.persistAndEmit({
       groupId,
       senderId,
@@ -54,6 +66,7 @@ export class MessagesService {
     content: string,
     attachment: { url: string; name: string; mime: string },
   ) {
+    // Same emit path as a plain message, so attachments need no special client handling.
     return this.persistAndEmit({
       groupId,
       senderId,
@@ -72,19 +85,23 @@ export class MessagesService {
     userId: string,
     content: string,
   ) {
+    // Step 2. Ownership and type are checked before anything is written.
     const existing = await this.assertOwnUserMessage(
       groupId,
       messageId,
       userId,
     );
+    // Editing a tombstone would resurrect text the user deliberately removed.
     if (existing.deletedAt) {
       throw new ForbiddenException('This message has been deleted');
     }
+    // editedAt is stamped so the UI can show an "edited" marker.
     const message = await this.prisma.message.update({
       where: { id: messageId },
       data: { content, editedAt: new Date() },
       select: MESSAGE_SELECT,
     });
+    // MESSAGE_UPDATED, not MESSAGE_CREATED, so clients replace rather than append.
     this.events.emit(MESSAGE_UPDATED, {
       message,
     } satisfies MessageUpdatedPayload);
@@ -94,11 +111,13 @@ export class MessagesService {
   /** Soft-delete your own USER message: tombstone it (blank the text) and broadcast the update. */
   async softDelete(groupId: string, messageId: string, userId: string) {
     await this.assertOwnUserMessage(groupId, messageId, userId);
+    // The row survives so reactions and reply threads keep their referent; only the text goes.
     const message = await this.prisma.message.update({
       where: { id: messageId },
       data: { deletedAt: new Date(), content: '' },
       select: MESSAGE_SELECT,
     });
+    // The same event as an edit — to a client, a deletion is just another replacement.
     this.events.emit(MESSAGE_UPDATED, {
       message,
     } satisfies MessageUpdatedPayload);
@@ -111,11 +130,13 @@ export class MessagesService {
     messageId: string,
     userId: string,
   ) {
+    // Step 3. Both ids in the WHERE, so a message from another group reads as not found.
     const existing = await this.prisma.message.findFirst({
       where: { id: messageId, groupId },
       select: { senderId: true, type: true, deletedAt: true },
     });
     if (!existing) throw new NotFoundException('Message not found');
+    // The type check is what stops anyone editing a SYSTEM or AI_SUMMARY message.
     if (existing.senderId !== userId || existing.type !== MessageType.USER) {
       throw new ForbiddenException('You can only change your own messages');
     }
@@ -125,6 +146,7 @@ export class MessagesService {
   /** Single write+emit point so USER and AI_SUMMARY messages both broadcast identically. */
   private async persistAndEmit(data: {
     groupId: string;
+    // Nullable to allow system-authored rows through the same path.
     senderId: string | null;
     content: string;
     type: MessageType;
@@ -132,6 +154,7 @@ export class MessagesService {
     attachmentName?: string;
     attachmentMime?: string;
   }) {
+    // Step 4. MESSAGE_SELECT means the emitted payload is already in broadcast shape.
     const message = await this.prisma.message.create({
       data,
       select: MESSAGE_SELECT,
@@ -154,9 +177,11 @@ export class MessagesService {
         groupId,
         type: MessageType.USER,
         deletedAt: null,
+        // `contains` compiles to ILIKE %q% — no index can serve it, hence the hard cap below.
         content: { contains: q, mode: 'insensitive' },
       },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      // Step 5. The only thing between a one-character query and a whole group's history.
       take: SEARCH_RESULT_LIMIT,
       select: MESSAGE_SELECT,
     });
@@ -182,6 +207,7 @@ export class MessagesService {
     limit: number,
     cursor?: string,
   ): Promise<{ data: unknown[]; meta: PaginationMeta }> {
+    // Step 6. An absent cursor means the first page; the spread below then adds no predicate.
     const decoded = cursor ? decodeCursor(cursor) : null;
 
     const rows = await this.prisma.message.findMany({
@@ -189,6 +215,7 @@ export class MessagesService {
         groupId,
         ...(decoded
           ? {
+              // The two-branch OR is the tuple comparison Prisma cannot express directly.
               OR: [
                 { createdAt: { lt: decoded.createdAt } },
                 { createdAt: decoded.createdAt, id: { lt: decoded.id } },
@@ -196,15 +223,19 @@ export class MessagesService {
             }
           : {}),
       },
+      // Must mirror the cursor's field order, or the keyset predicate stops being sound.
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      // The +1 row is the has-more probe, and is sliced off before returning.
       take: limit + 1,
       select: MESSAGE_SELECT,
     });
 
     const hasMore = rows.length > limit;
     const page = hasMore ? rows.slice(0, limit) : rows;
+    // The last row of the page becomes the next cursor's position.
     const last = page.at(-1);
 
+    // null rather than a cursor when the history is exhausted, so the client knows to stop.
     const nextCursor =
       hasMore && last
         ? encodeCursor({ createdAt: last.createdAt, id: last.id })

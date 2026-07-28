@@ -1,3 +1,11 @@
+/**
+ * HOW THIS FILE WORKS
+ *   1. Configure passport-jwt: read the Bearer header, verify the signature, honour expiry.
+ *   2. validate() runs only after all of that passes.
+ *   3. Its return value becomes request.user.
+ *
+ * Wired in as the global guard's strategy, so every non-@Public route passes through it.
+ */
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PassportStrategy } from '@nestjs/passport';
@@ -24,14 +32,18 @@ import { JwtPayload } from '../interfaces/auth.types';
 export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor(config: ConfigService) {
     super({
+      // Step 1. Authorization: Bearer <token> — no cookie or query-string fallback.
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+      // Expired tokens are rejected by passport before validate() is reached.
       ignoreExpiration: false,
+      // The ACCESS secret specifically — refresh tokens are opaque and never verified here.
       secretOrKey: config.getOrThrow<string>('JWT_ACCESS_SECRET'),
     });
   }
 
   validate(payload: JwtPayload): AuthUser {
     // The return value becomes request.user, surfaced to handlers via @CurrentUser().
+    // Steps 2-3. No database call — see the docblock for why that is deliberate.
     return { userId: payload.sub, email: payload.email };
   }
 }

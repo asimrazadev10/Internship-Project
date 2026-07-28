@@ -1,3 +1,10 @@
+/**
+ * HOW THIS FILE WORKS
+ *   1. Call ConfigModule.forRoot once, here and nowhere else.
+ *   2. Pass validateEnv, so a bad .env stops the process at boot.
+ *
+ * Imported by the main app and by all four worker modules.
+ */
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 
@@ -14,8 +21,11 @@ import { validateEnv } from './env.validation';
 @Module({
   imports: [
     ConfigModule.forRoot({
+      // Injectable everywhere without re-importing.
       isGlobal: true,
+      // Read once at startup rather than hitting process.env on every access.
       cache: true,
+      // Step 2. Runs before any provider is constructed, so misconfiguration fails fast.
       validate: validateEnv,
     }),
   ],

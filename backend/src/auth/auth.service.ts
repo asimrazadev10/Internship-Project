@@ -1,3 +1,15 @@
+/**
+ * HOW THIS FILE WORKS
+ *   1. register() — hash the password, insert the user, issue a token pair.
+ *   2. login() — look the user up, verify against a real or decoy hash, issue a pair.
+ *   3. refresh() — delegate to TokenService.rotate.
+ *   4. googleLogin() — verify the ID token, resolve or create the user, issue a pair.
+ *   5. resolveGoogleUser() — match on provider subject id, refuse to auto-link by email.
+ *   6. logout() — revoke the whole rotation family.
+ *
+ * Holds no cryptography or persistence of its own; it composes UsersService, PasswordService,
+ * TokenService and GoogleService.
+ */
 import {
   ConflictException,
   Injectable,
@@ -30,6 +42,7 @@ export class AuthService {
   ) {}
 
   async register(dto: RegisterDto): Promise<AuthResult> {
+    // Step 1. Hash before the insert, so the plaintext never reaches the persistence layer.
     const passwordHash = await this.passwords.hash(dto.password);
 
     // Uniqueness of email is enforced by the DB constraint; a duplicate surfaces as P2002 and
@@ -42,10 +55,12 @@ export class AuthService {
     });
 
     const tokens = await this.tokens.issueForNewSession(user);
+    // Wrapped in UserEntity so @Exclude() strips the hash on the way out.
     return { user: new UserEntity(user), ...tokens };
   }
 
   async login(dto: LoginDto): Promise<AuthResult> {
+    // Step 2. Email was already normalised by the DTO, so this lookup matches registration.
     const user = await this.users.findByEmail(dto.email);
 
     // One generic failure for every reason (no such user, OAuth-only account with null
@@ -55,11 +70,13 @@ export class AuthService {
     // The password is still verified against a decoy hash when the user does not exist, so the
     // response time does not reveal whether the email was found (timing side-channel).
     const hashToCheck = user?.password ?? this.passwords.getDummyHash();
+    // Always awaited, even in the not-found case — that is the whole point of the decoy.
     const passwordMatches = await this.passwords.verify(
       hashToCheck,
       dto.password,
     );
 
+    // Three distinct causes, one indistinguishable response.
     if (!user || !user.password || !passwordMatches) {
       throw new UnauthorizedException('Invalid email or password');
     }
@@ -69,6 +86,7 @@ export class AuthService {
   }
 
   async refresh(refreshToken: string): Promise<AuthResult> {
+    // Step 3. rotate() returns the user alongside the new pair, so no extra lookup is needed.
     const { user, ...tokens } = await this.tokens.rotate(refreshToken);
     return { user: new UserEntity(user), ...tokens };
   }
@@ -78,9 +96,11 @@ export class AuthService {
    * user and issue our own session tokens — Google's token never becomes a session credential.
    */
   async googleLogin(idToken: string): Promise<AuthResult> {
+    // Step 4. Verification happens first; nothing below runs on an untrusted token.
     const identity = await this.google.verify(idToken);
     const user = await this.resolveGoogleUser(identity);
 
+    // From here the flow is identical to a password login — same tokens, same lifetimes.
     const tokens = await this.tokens.issueForNewSession(user);
     return { user: new UserEntity(user), ...tokens };
   }
@@ -108,6 +128,7 @@ export class AuthService {
       );
     }
 
+    // Step 5. A brand-new Google account: create it with providerId as the identity key.
     return this.users.create({
       email: identity.email,
       name: identity.name,
@@ -118,6 +139,7 @@ export class AuthService {
   }
 
   async logout(refreshToken: string): Promise<void> {
+    // Step 6. Revokes the family, not just this token, so every rotation descendant dies too.
     await this.tokens.revokeByToken(refreshToken);
   }
 }

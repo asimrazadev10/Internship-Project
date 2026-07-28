@@ -1,3 +1,14 @@
+/**
+ * HOW THIS FILE WORKS
+ *   1. Create the Nest app from AppModule — with an HTTP server, unlike the four workers.
+ *   2. Serve locally-stored uploads as static files, with two hardening headers.
+ *   3. Enable shutdown hooks so Prisma and Redis close cleanly on SIGTERM.
+ *   4. Install the Redis-backed Socket.IO adapter.
+ *   5. Listen on the validated PORT and log the readiness line.
+ *
+ * The API process's entry point. Compare src/workers/*.worker.ts, which use
+ * createApplicationContext and never listen on a port.
+ */
 import { ServerResponse } from 'node:http';
 
 import { Logger } from '@nestjs/common';
@@ -10,6 +21,7 @@ import { RedisIoAdapter } from './chat/redis-io.adapter';
 import { StorageService } from './storage/storage.service';
 
 async function bootstrap(): Promise<void> {
+  // Step 1. The NestExpressApplication generic is what makes useStaticAssets available below.
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
   // Serve locally-stored uploads (the dev fallback when Supabase isn't configured) as public
@@ -38,10 +50,12 @@ async function bootstrap(): Promise<void> {
   // and the Prisma pool is torn down by process exit instead of being closed.
   app.enableShutdownHooks();
 
+  // Pulled from the container, because the adapter below needs it before listen().
   const config = app.get(ConfigService);
 
   // Redis-backed Socket.IO adapter: `server.to(room).emit` fans out across gateway instances
   // via Redis pub/sub. Wired even single-node so scaling out later needs no code change.
+  // Step 4. Also the mechanism by which the notification worker's emits reach these clients.
   const redisIoAdapter = new RedisIoAdapter(app);
   redisIoAdapter.connectToRedis(config);
   app.useWebSocketAdapter(redisIoAdapter);
@@ -59,4 +73,5 @@ async function bootstrap(): Promise<void> {
   );
 }
 
+// `void` marks the floating promise as deliberate for eslint.
 void bootstrap();

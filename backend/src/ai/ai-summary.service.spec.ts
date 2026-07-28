@@ -14,7 +14,7 @@ import { AiSummaryService } from './ai-summary.service';
 function makeService() {
   const config = {
     getOrThrow: (k: string) =>
-      k === 'GOOGLE_GENERATIVE_AI_API_KEY' ? 'key' : 'gemini-2.0-flash',
+      k === 'GOOGLE_GENERATIVE_AI_API_KEY' ? 'key' : 'gemini-3.5-flash',
   } as unknown as ConfigService;
   return new AiSummaryService(config);
 }

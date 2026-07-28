@@ -1,3 +1,14 @@
+/**
+ * HOW THIS FILE WORKS
+ *   1. upload() sanitises the filename and derives the extension from the VALIDATED MIME.
+ *   2. It builds an object path namespaced by group and prefixed with a uuid.
+ *   3. `configured` decides the backend: Supabase when the env vars are set, local disk otherwise.
+ *   4. uploadToSupabase() POSTs the raw bytes to the Storage REST API and returns a public URL.
+ *   5. uploadToLocal() writes under uploads/ and returns a relative /api/uploads URL.
+ *
+ * Step 1 is a security control, not tidiness — see EXTENSION_FOR_MIME for the stored-XSS path it
+ * closes.
+ */
 import { randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -74,6 +85,7 @@ export class StorageService {
 
   /** True when SUPABASE_URL and a service key are present — i.e. the Supabase path is used. */
   get configured(): boolean {
+    // Step 3. `get`, not `getOrThrow` — absence is a valid state meaning "use local disk".
     return Boolean(
       this.config.get<string>('SUPABASE_URL') &&
       this.config.get<string>('SUPABASE_SERVICE_KEY'),
@@ -103,6 +115,7 @@ export class StorageService {
     // Extension comes from the validated MIME, never from the uploader. See EXTENSION_FOR_MIME.
     const ext =
       EXTENSION_FOR_MIME[file.mimetype.toLowerCase()] ?? FALLBACK_EXTENSION;
+    // Step 2. The uuid makes collisions impossible even for identical filenames.
     const objectPath = `${groupId}/${randomUUID()}-${stem}.${ext}`;
     return this.configured
       ? this.uploadToSupabase(objectPath, file)
@@ -113,18 +126,22 @@ export class StorageService {
     objectPath: string,
     file: UploadedFileLike,
   ): Promise<StoredFile> {
+    // Trailing slash stripped so the joined URL never contains a double slash.
     const root = this.config
       .getOrThrow<string>('SUPABASE_URL')
       .replace(/\/$/, '');
+    // Server-side only — this key must never reach the browser.
     const key = this.config.getOrThrow<string>('SUPABASE_SERVICE_KEY');
     const endpoint = `${root}/storage/v1/object/${this.bucket}/${encodeURI(objectPath)}`;
 
+    // Step 4. Plain fetch, no SDK — the whole contract is these few lines.
     const res = await fetch(endpoint, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${key}`,
         'Content-Type': file.mimetype || 'application/octet-stream',
         'cache-control': '3600',
+        // Refuses to overwrite: the uuid makes a collision a bug worth surfacing.
         'x-upsert': 'false',
       },
       // A Node Buffer isn't a valid BodyInit in the DOM fetch types; wrap it as a Uint8Array view.
@@ -132,15 +149,19 @@ export class StorageService {
     });
 
     if (!res.ok) {
+      // The upstream detail is logged but never returned — it can carry bucket internals.
       const detail = await res.text().catch(() => '');
       this.logger.error(
         `Supabase upload failed (${res.status} ${res.statusText}): ${detail}`,
       );
+      // 503, so the client can distinguish "storage is down" from "your file was rejected".
       throw new ServiceUnavailableException('Upload failed');
     }
 
     return {
+      // The public URL is deterministic, so no second round-trip is needed to learn it.
       url: `${root}/storage/v1/object/public/${this.bucket}/${encodeURI(objectPath)}`,
+      // The ORIGINAL name is kept for display; only the STORED name was sanitised.
       name: file.originalname,
       mime: file.mimetype,
       size: file.size,
@@ -152,6 +173,7 @@ export class StorageService {
     file: UploadedFileLike,
   ): Promise<StoredFile> {
     const absPath = join(StorageService.uploadsDir(), objectPath);
+    // Step 5. recursive so the per-group directory is created on first upload.
     await mkdir(join(absPath, '..'), { recursive: true });
     await writeFile(absPath, file.buffer);
     this.logger.log(
@@ -170,6 +192,7 @@ export class StorageService {
 
   /** Absolute path of the local uploads directory (shared with main.ts's static route). */
   static uploadsDir(): string {
+    // Static so main.ts can call it without instantiating the service.
     return join(process.cwd(), 'uploads');
   }
 }

@@ -1,3 +1,13 @@
+/**
+ * HOW THIS FILE WORKS
+ *   1. Import infrastructure: config, Prisma, the in-process event bus, the BullMQ connection.
+ *   2. Import every feature module.
+ *   3. Bind the global ValidationPipe as APP_PIPE.
+ *   4. Bind the two response interceptors — ORDER MATTERS, see the note below.
+ *   5. Bind the catch-all exception filter.
+ *
+ * Cross-cutting concerns are bound as providers rather than in main.ts, so they can inject.
+ */
 import {
   ClassSerializerInterceptor,
   Module,
@@ -36,11 +46,14 @@ import { UsersModule } from './users/users.module';
   imports: [
     AppConfigModule,
     PrismaModule,
+    // The in-process bus behind MESSAGE_CREATED, MEMBER_JOINED and friends.
     EventEmitterModule.forRoot(),
+    // The API is a queue PRODUCER only; the four workers are the consumers.
     BullModule.forRootAsync({
       inject: [ConfigService],
       useFactory: bullConnectionFactory,
     }),
+    // Step 2. AuthModule is what binds the global JwtAuthGuard, so importing it protects everything.
     HealthModule,
     SummaryModule,
     UsersModule,
@@ -51,6 +64,7 @@ import { UsersModule } from './users/users.module';
   ],
   providers: [
     {
+      // Step 3. useValue, not useClass — the pipe needs constructor options.
       provide: APP_PIPE,
       useValue: new ValidationPipe({
         // Strip properties with no matching DTO decorator, so unexpected fields cannot
@@ -66,8 +80,12 @@ import { UsersModule } from './users/users.module';
         // versions). DTOs declare @Type(() => Number) explicitly instead.
       }),
     },
+    // Step 4. Registered FIRST, so on the response path it runs LAST — wrapping the envelope
+    // around output that ClassSerializerInterceptor has already stripped.
     { provide: APP_INTERCEPTOR, useClass: ResponseInterceptor },
+    // Registered second, so it runs first: @Exclude() fields go before anything is wrapped.
     { provide: APP_INTERCEPTOR, useClass: ClassSerializerInterceptor },
+    // Step 5. @Catch() with no argument, so this is the only filter needed.
     { provide: APP_FILTER, useClass: AllExceptionsFilter },
   ],
 })

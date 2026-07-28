@@ -1,3 +1,13 @@
+/**
+ * HOW THIS FILE WORKS
+ *   1. Read the grace period from config.
+ *   2. Compute a cutoff: now minus that grace.
+ *   3. deleteMany every refresh token that expired before the cutoff.
+ *   4. Log the count — even when it is zero.
+ *
+ * Called by the scheduler worker's second repeatable job. The predicate is expiry-only, never
+ * revoked-only, which the docblock below explains.
+ */
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
@@ -31,11 +41,14 @@ export class RefreshTokenPurgeService {
 
   /** Delete every token whose expiry is older than the grace period. Returns how many went. */
   async purgeExpired(): Promise<number> {
+    // Step 1. Its own knob, so it is not dragged along by a demo-lowered summary interval.
     const graceMs = this.config.getOrThrow<number>(
       'REFRESH_TOKEN_PURGE_GRACE_MS',
     );
+    // Step 2. The headroom is what keeps reuse detection working for recently expired tokens.
     const cutoff = new Date(Date.now() - graceMs);
 
+    // Step 3. Expiry-only predicate — revoked-but-unexpired rows must survive.
     const { count } = await this.prisma.refreshToken.deleteMany({
       where: { expiresAt: { lt: cutoff } },
     });

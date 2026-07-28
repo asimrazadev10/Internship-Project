@@ -1,3 +1,12 @@
+/**
+ * HOW THIS FILE WORKS
+ *   1. Confirm the message really belongs to the group named in the route.
+ *   2. Attempt the DELETE first — its row count IS the "does it exist?" test.
+ *   3. If nothing was deleted, insert; a P2002 from a concurrent insert is treated as success.
+ *   4. Re-read the full reaction set and emit REACTION_CHANGED for the gateway to broadcast.
+ *
+ * The delete-first ordering is what makes the toggle race-safe; see the comment on step 2.
+ */
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Prisma } from '@prisma/client';
@@ -23,6 +32,7 @@ export class ReactionsService {
     userId: string,
     emoji: string,
   ): Promise<{ emoji: string; userId: string }[]> {
+    // Step 1. Both ids in the WHERE — without this you could react to another group's message.
     const message = await this.prisma.message.findFirst({
       where: { id: messageId, groupId },
       select: { id: true },
@@ -38,6 +48,7 @@ export class ReactionsService {
       where: { messageId, userId, emoji },
     });
 
+    // Step 3. count === 0 means it was absent, so this is an "add".
     if (removed.count === 0) {
       try {
         await this.prisma.reaction.create({
@@ -56,16 +67,19 @@ export class ReactionsService {
       }
     }
 
+    // Step 4. The whole set, not a delta, so the client replaces rather than reconciles.
     const reactions = await this.prisma.reaction.findMany({
       where: { messageId },
       select: { emoji: true, userId: true },
     });
     // Persist-then-broadcast, same pattern as messages: the gateway's @OnEvent fans this out.
+    // `satisfies` type-checks the payload without widening the object literal.
     this.events.emit(REACTION_CHANGED, {
       groupId,
       messageId,
       reactions,
     } satisfies ReactionChangedPayload);
+    // Returned to the HTTP caller too, so it need not wait for its own broadcast.
     return reactions;
   }
 }

@@ -1,4 +1,14 @@
 /**
+ * HOW THIS FILE WORKS
+ *   1. PaginationMeta — the cursor metadata list endpoints attach.
+ *   2. SuccessResponse / ErrorResponse — the two envelope shapes, and the only two.
+ *   3. ErrorCode — stable machine-readable codes clients branch on.
+ *   4. PaginatedPayload + isPaginatedPayload() — the structural signal the interceptor looks for.
+ *
+ * Types and constants only; the interceptor and the filter apply them.
+ */
+
+/**
  * The single response envelope for every endpoint in the API.
  *
  * A client should never have to guess the shape of a response based on which route it hit.
@@ -14,6 +24,7 @@ export interface PaginationMeta {
 }
 
 export interface SuccessResponse<T> {
+  // A literal `true`, so a client can discriminate on this field alone.
   success: true;
   data: T;
   message?: string;
@@ -25,6 +36,7 @@ export interface ErrorResponse {
   error: {
     code: string;
     message: string;
+    // Only populated for validation failures, which carry a list of field errors.
     details?: unknown[];
   };
 }
@@ -52,6 +64,7 @@ export const ErrorCode = {
   SERVICE_UNAVAILABLE: 'SERVICE_UNAVAILABLE',
 } as const;
 
+// Derived from the object, so the union can never list a code the object does not define.
 export type ErrorCodeValue = (typeof ErrorCode)[keyof typeof ErrorCode];
 
 /**
@@ -73,6 +86,8 @@ export function isPaginatedPayload(
     value !== null &&
     'data' in value &&
     'meta' in value &&
+    // Exactly two keys — so a domain object that happens to have data and meta is not mistaken
+    // for a paginated payload.
     Object.keys(value).length === 2
   );
 }
