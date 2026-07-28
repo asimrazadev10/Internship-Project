@@ -77,11 +77,14 @@ function Test-TcpPort {
 # Returns $true on a clean exit, $false on failure OR timeout.
 function Invoke-WithTimeout {
   param([string]$Exe, [string[]]$Args, [int]$TimeoutSec = 180)
+  # Set-Location inside the job: Start-Job runs in $HOME on Windows PowerShell 5.1, where
+  # `docker compose` would then not find docker-compose.yml and fail as if the CLI were wedged.
   $job = Start-Job -ScriptBlock {
-    param($e, $a)
+    param($e, $a, $cwd)
+    Set-Location $cwd
     & $e @a 2>&1 | Out-String
     $LASTEXITCODE
-  } -ArgumentList $Exe, $Args
+  } -ArgumentList $Exe, $Args, $PSScriptRoot
   if (Wait-Job $job -Timeout $TimeoutSec) {
     $out = Receive-Job $job
     Remove-Job $job -Force
@@ -131,13 +134,24 @@ if ($Clean) {
 
 # Port 3000/3001 already bound almost always means a previous run is still alive.
 # Reporting it here beats an EADDRINUSE stack trace 40 seconds into the script.
+# Abort rather than warn: step 5's wait-for-port guard passes off the OLD API otherwise.
+$blocked = @()
 foreach ($p in 3000, 3001) {
   $busy = Get-NetTCPConnection -State Listen -LocalPort $p -ErrorAction SilentlyContinue
   if ($busy) {
-    $procName = (Get-Process -Id $busy[0].OwningProcess -ErrorAction SilentlyContinue).ProcessName
-    Write-Warn2 "port $p is already in use by $procName (PID $($busy[0].OwningProcess)) -- stop it first, or this run will fail to bind."
+    $ownerPid = $busy[0].OwningProcess
+    $procName = (Get-Process -Id $ownerPid -ErrorAction SilentlyContinue).ProcessName
+    Write-Fail "port $p is already in use by $procName (PID $ownerPid)."
+    $blocked += $ownerPid
   }
 }
+if ($blocked.Count -gt 0) {
+  Write-Warn2 'A previous run is still alive. Ctrl-C it in its own terminal, or force it down with:'
+  Write-Warn2 "  Stop-Process -Id $($blocked -join ',') -Force"
+  Write-Warn2 'Its parent `concurrently` will then bring the rest of that run down with it.'
+  exit 1
+}
+Write-Ok 'Ports 3000 and 3001 are free.'
 
 # ---------------------------------------------------------------- docker
 Write-Step 2 'Postgres and Redis'
@@ -231,6 +245,7 @@ if ($NoWorkers) {
     # dist/. Started together, the workers lose the race and die with
     # "Cannot find module './scheduler-worker.module'". The API's port opening means its
     # compile finished, so dist/ is whole by the time the workers load it.
+    # This holds only because preflight aborts on a bound 3000 -- a stale API would open the gate early.
     'node scripts/wait-for-port.js 3000 180 && npm --prefix backend run workers:all',
     'npm --prefix frontend run dev'
   )

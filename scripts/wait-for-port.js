@@ -12,6 +12,10 @@
  * "Cannot find module './scheduler-worker.module'". The API listening on its port means
  * its compile finished, so dist/ is complete and the workers can safely load from it.
  *
+ * A socket cannot tell WHOSE server answered, so this only proves "the API of this run started"
+ * because dev.ps1 refuses to start at all while something else is already listening on 3000.
+ * If that preflight abort is ever downgraded back to a warning, this guard goes silently dead.
+ *
  * Plain Node with no dependencies, so it works before anything is installed at the repo root.
  *
  *   node scripts/wait-for-port.js 3000 [timeoutSeconds]
