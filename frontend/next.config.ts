@@ -36,6 +36,14 @@ const backendOrigin = process.env.BACKEND_ORIGIN ?? "http://localhost:3000";
  * NEXT_PUBLIC_GOOGLE_CLIENT_ID is in neither list on purpose: GoogleButton renders null when it is
  * unset, which is a correct and deliberate degradation.
  */
+if (!process.env.BACKEND_ORIGIN) {
+  throw new Error(
+    "BACKEND_ORIGIN is not set. Copy frontend/.env.example to .env.local. " +
+      "Every /api/* request is rewritten to this origin, so without it the app cannot talk " +
+      "to the backend at all.",
+  );
+}
+
 if (!process.env.NEXT_PUBLIC_SOCKET_URL) {
   throw new Error(
     "NEXT_PUBLIC_SOCKET_URL is not set. Copy frontend/.env.example to .env.local. " +
@@ -51,6 +59,10 @@ if (!process.env.NEXT_PUBLIC_SITE_URL) {
 }
 
 const nextConfig: NextConfig = {
+  // When several `next dev` instances run in the same working directory (the -WebPorts farm),
+  // each must build into its own folder — they cannot share one `.next`. dev.ps1 sets
+  // NEXT_DIST_DIR per instance (e.g. `.next-3000`); the API/single runs leave it as `.next`.
+  distDir: process.env.NEXT_DIST_DIR ?? ".next",
   async rewrites() {
     return [
       {

@@ -1,106 +1,119 @@
 import { NotFoundException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { Prisma } from '@prisma/client';
+import { Types } from 'mongoose';
 
-import { PrismaService } from '../prisma/prisma.service';
+import { MessageRepository } from '../common/database/repositories/message.repository';
+import { ReactionRepository } from '../common/database/repositories/reaction.repository';
 import { REACTION_CHANGED } from './message-events';
 import { ReactionsService } from './reactions.service';
 
-function makePrisma(overrides: {
-  deleteCount?: number;
+const GROUP_ID = '507f1f77bcf86cd799439011';
+const REACTION_USER_ID = '507f1f77bcf86cd799439012';
+const MESSAGE_ID = '507f1f77bcf86cd799439013';
+const USER_ID = '507f1f77bcf86cd799439014';
+
+function makeRepos(overrides: {
+  deleteResult?: boolean;
   createImpl?: () => Promise<unknown>;
 }) {
   const create = jest
     .fn()
     .mockImplementation(overrides.createImpl ?? (() => Promise.resolve({})));
   return {
-    prisma: {
-      message: { findFirst: jest.fn().mockResolvedValue({ id: 'm1' }) },
-      reaction: {
-        deleteMany: jest
-          .fn()
-          .mockResolvedValue({ count: overrides.deleteCount ?? 0 }),
-        create,
-        findMany: jest.fn().mockResolvedValue([{ emoji: '👍', userId: 'u1' }]),
-      },
-    } as unknown as PrismaService,
+    messages: {
+      findById: jest.fn().mockResolvedValue({
+        _id: new Types.ObjectId(MESSAGE_ID),
+        groupId: new Types.ObjectId(GROUP_ID),
+      }),
+    } as unknown as MessageRepository,
+    reactions: {
+      deleteReaction: jest
+        .fn()
+        .mockResolvedValue(overrides.deleteResult ?? false),
+      createReaction: create,
+      findByMessage: jest.fn().mockResolvedValue([
+        {
+          emoji: '👍',
+          userId: new Types.ObjectId(REACTION_USER_ID),
+        },
+      ]),
+    } as unknown as ReactionRepository,
     create,
   };
 }
 
-function makeService(prisma: PrismaService) {
-  // Held as a local rather than read back off `events` at the assertion, so the expectation is
-  // on a plain jest.fn() and not an unbound method reference.
+function makeService(
+  reactions: ReactionRepository,
+  messages: MessageRepository,
+) {
   const emit = jest.fn();
   const events = { emit } as unknown as EventEmitter2;
-  return { service: new ReactionsService(prisma, events), emit };
+  return { service: new ReactionsService(messages, reactions, events), emit };
 }
-
-const p2002 = () =>
-  new Prisma.PrismaClientKnownRequestError('unique violation', {
-    code: 'P2002',
-    clientVersion: 'test',
-  });
 
 describe('ReactionsService.toggle', () => {
   it('adds the reaction when the delete removed nothing', async () => {
-    const { prisma, create } = makePrisma({ deleteCount: 0 });
-    const { service, emit } = makeService(prisma);
+    const { messages, reactions, create } = makeRepos({ deleteResult: false });
+    const { service, emit } = makeService(reactions, messages);
 
-    const result = await service.toggle('g1', 'm1', 'u1', '👍');
+    const result = await service.toggle(GROUP_ID, MESSAGE_ID, USER_ID, '👍');
 
     expect(create).toHaveBeenCalledTimes(1);
-    expect(result).toEqual([{ emoji: '👍', userId: 'u1' }]);
+    expect(result).toEqual([{ emoji: '👍', userId: REACTION_USER_ID }]);
     expect(emit).toHaveBeenCalledWith(
       REACTION_CHANGED,
-      expect.objectContaining({ groupId: 'g1', messageId: 'm1' }),
+      expect.objectContaining({ groupId: GROUP_ID, messageId: MESSAGE_ID }),
     );
   });
 
   it('removes the reaction without re-adding it when one was deleted', async () => {
-    const { prisma, create } = makePrisma({ deleteCount: 1 });
-    const { service } = makeService(prisma);
+    const { reactions, create } = makeRepos({ deleteResult: true });
+    const { messages } = makeRepos({});
+    const { service } = makeService(reactions, messages);
 
-    await service.toggle('g1', 'm1', 'u1', '👍');
+    await service.toggle(GROUP_ID, MESSAGE_ID, USER_ID, '👍');
 
-    // deleteMany's count is the existence test — a removal must not fall through to a create.
     expect(create).not.toHaveBeenCalled();
   });
 
   // The race this method used to lose: two concurrent taps both saw "absent", both inserted, and
-  // the unique constraint turned the loser into an uncaught P2002 → 409.
+  // the unique constraint turned the loser into an error.
   it('treats a concurrent duplicate insert as success, not a 409', async () => {
-    const { prisma } = makePrisma({
-      deleteCount: 0,
-      createImpl: () => Promise.reject(p2002()),
+    const { messages, reactions } = makeRepos({
+      deleteResult: false,
+      createImpl: () => {
+        const err = new Error('duplicate key') as Error & { code?: number };
+        err.code = 11000;
+        return Promise.reject(err);
+      },
     });
-    const { service, emit } = makeService(prisma);
+    const { service, emit } = makeService(reactions, messages);
 
-    const result = await service.toggle('g1', 'm1', 'u1', '👍');
+    const result = await service.toggle(GROUP_ID, MESSAGE_ID, USER_ID, '👍');
 
-    expect(result).toEqual([{ emoji: '👍', userId: 'u1' }]);
+    expect(result).toEqual([{ emoji: '👍', userId: REACTION_USER_ID }]);
     expect(emit).toHaveBeenCalled();
   });
 
-  it('still propagates a non-P2002 database error', async () => {
-    const { prisma } = makePrisma({
-      deleteCount: 0,
+  it('still propagates a non-duplicate database error', async () => {
+    const { messages, reactions } = makeRepos({
+      deleteResult: false,
       createImpl: () => Promise.reject(new Error('connection lost')),
     });
-    const { service } = makeService(prisma);
+    const { service } = makeService(reactions, messages);
 
-    await expect(service.toggle('g1', 'm1', 'u1', '👍')).rejects.toThrow(
-      'connection lost',
-    );
+    await expect(
+      service.toggle(GROUP_ID, MESSAGE_ID, USER_ID, '👍'),
+    ).rejects.toThrow('connection lost');
   });
 
   it('rejects a message that is not in this group', async () => {
-    const { prisma } = makePrisma({});
-    (prisma.message.findFirst as jest.Mock).mockResolvedValue(null);
-    const { service } = makeService(prisma);
+    const { messages, reactions } = makeRepos({});
+    (messages.findById as jest.Mock).mockResolvedValue(null);
+    const { service } = makeService(reactions, messages);
 
     await expect(
-      service.toggle('g1', 'nope', 'u1', '👍'),
+      service.toggle(GROUP_ID, MESSAGE_ID, USER_ID, '👍'),
     ).rejects.toBeInstanceOf(NotFoundException);
   });
 });

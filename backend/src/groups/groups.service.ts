@@ -18,12 +18,15 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { Group, GroupMember, MemberRole, Prisma } from '@prisma/client';
+import { Types } from 'mongoose';
 
 import { NOT_A_MEMBER_MESSAGE } from '../common/error-messages';
-import { PrismaService } from '../prisma/prisma.service';
-import { isUuid } from '../common/utils/uuid';
-import { GROUP_MEMBER_SELECT } from './group.constants';
+import { GroupRepository } from '../common/database/repositories/group.repository';
+import { GroupMemberRepository } from '../common/database/repositories/group-member.repository';
+import { MemberRole } from '../modules/groups/schemas/group-member.schema';
+import { GroupMemberDocument } from '../modules/groups/schemas/group-member.schema';
+import { MongoSessionService } from '../common/database/mongo-session.service';
+import { isObjectId } from '../common/utils/uuid';
 import {
   MEMBER_JOINED,
   MemberJoinedPayload,
@@ -42,7 +45,9 @@ import {
 @Injectable()
 export class GroupsService {
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly groups: GroupRepository,
+    private readonly members: GroupMemberRepository,
+    private readonly session: MongoSessionService,
     private readonly events: EventEmitter2,
   ) {}
 
@@ -50,38 +55,32 @@ export class GroupsService {
    * Create a group and its owner membership ATOMICALLY.
    *
    * These two writes must both succeed or both fail: a group with no OWNER row would be a group
-   * nobody can administer, and an orphan membership makes no sense. $transaction gives
+   * nobody can administer, and an orphan membership makes no sense. Transaction gives
    * all-or-nothing — if the second insert fails, the first is rolled back.
    */
-  async create(userId: string, name: string): Promise<Group> {
-    try {
-      return await this.prisma.$transaction(async (tx) => {
-        // Step 1. Note `tx`, not `this.prisma` — using the latter would escape the transaction.
-        const group = await tx.group.create({
-          data: { name, createdBy: userId },
-        });
+  async create(userId: string, name: string): Promise<any> {
+    const userObjectId = new Types.ObjectId(userId);
+    return this.session.withTransaction(async (tx) => {
+      const group = await this.groups.create(
+        { name, createdBy: userObjectId },
+        tx,
+      );
 
-        // The creator is OWNER, so every group has exactly one from the moment it exists.
-        await tx.groupMember.create({
-          data: { groupId: group.id, userId, role: MemberRole.OWNER },
-        });
+      await this.members.createMembership(
+        group._id,
+        userObjectId,
+        MemberRole.OWNER,
+        tx,
+      );
 
-        return group;
-      });
-    } catch (error) {
-      // @@unique([createdBy, name]) → P2002 when this user already has a group by that name.
-      // Caught here rather than left to the global filter purely for the message: the generic
-      // mapping would answer "A record with this createdBy, name already exists", which leaks
-      // column names and tells the user nothing actionable.
-      if (
-        error instanceof Prisma.PrismaClientKnownRequestError &&
-        error.code === 'P2002'
-      ) {
-        throw new ConflictException('You already have a group with this name');
-      }
-      // Anything else is unexpected and goes to the global filter untouched.
-      throw error;
-    }
+      // Plain snapshot, not the live document: the global ClassSerializerInterceptor walks any
+      // object it is handed, and a Mongoose Document breaks it.
+      const groupPlain = group.toObject({ virtuals: true }) as Record<
+        string,
+        unknown
+      >;
+      return groupPlain;
+    });
   }
 
   /**
@@ -90,15 +89,7 @@ export class GroupsService {
    * and message counts, which the list UI needs without a second round-trip.
    */
   findMyGroups(userId: string) {
-    return this.prisma.group.findMany({
-      // Step 2. `some` on members is the authorisation — you cannot see a group you are not in.
-      where: { members: { some: { userId } } },
-      orderBy: { createdAt: 'desc' },
-      include: {
-        // _count is computed by Postgres, so the list needs no follow-up queries.
-        _count: { select: { members: true, messages: true } },
-      },
-    });
+    return this.groups.findMyGroups(new Types.ObjectId(userId));
   }
 
   /**
@@ -107,22 +98,51 @@ export class GroupsService {
    * the NotFound guard rather than trusting it always exists.
    */
   async findOne(groupId: string) {
-    const group = await this.prisma.group.findUnique({
-      where: { id: groupId },
-      include: {
-        members: {
-          // Step 3. Join order, so the list is stable between reloads.
-          orderBy: { joinedAt: 'asc' },
-          // The shared select — join() must return this same shape.
-          select: GROUP_MEMBER_SELECT,
-        },
-      },
-    });
+    const groupObjectId = new Types.ObjectId(groupId);
+    const group = await this.groups.findById(groupObjectId);
 
     if (!group) {
       throw new NotFoundException('Group not found');
     }
-    return group;
+
+    // Compose the detail from a plain group snapshot plus its member rows (from the groupmembers
+    // collection - the stored `Group.members` array is never maintained). Members are plain
+    // objects so the ClassSerializerInterceptor never sees a Mongoose document.
+    interface PlainGroupMember {
+      _id: Types.ObjectId;
+      groupId: Types.ObjectId;
+      userId: Types.ObjectId;
+      role: string;
+      joinedAt: Date;
+      lastReadAt: Date | null;
+      user?: { _id: Types.ObjectId; name: string; email: string } | null;
+    }
+    const groupPlain = group.toObject({ virtuals: true }) as Record<
+      string,
+      unknown
+    >;
+    const rows = await this.members.findMembersByGroup(groupObjectId);
+    groupPlain.members = rows.map((row: GroupMemberDocument) => {
+      const m = row.toObject({ virtuals: true }) as PlainGroupMember;
+      const memberUser = m.user ?? null;
+      return {
+        id: String(m._id),
+        groupId: String(m.groupId),
+        userId: String(m.userId),
+        role: m.role,
+        joinedAt: m.joinedAt,
+        lastReadAt: m.lastReadAt ?? null,
+        user: memberUser
+          ? {
+              id: String(memberUser._id),
+              name: memberUser.name,
+              email: memberUser.email,
+            }
+          : null,
+      };
+    });
+
+    return groupPlain;
   }
 
   /**
@@ -130,45 +150,54 @@ export class GroupsService {
    * id may join — the id acts as a weak capability token, a decision documented in the schema
    * design and README.
    */
-  async join(userId: string, groupId: string): Promise<Group> {
-    // Step 4. Checked first so joining a non-existent group is 404, not a foreign-key error.
-    const group = await this.prisma.group.findUnique({
-      where: { id: groupId },
-    });
+  async join(
+    userId: string,
+    groupId: string,
+  ): Promise<Record<string, unknown>> {
+    const userObjectId = new Types.ObjectId(userId);
+    const groupObjectId = new Types.ObjectId(groupId);
+
+    const group = await this.groups.findById(groupObjectId);
     if (!group) {
       throw new NotFoundException('Group not found');
     }
 
     try {
-      // Select the created member in the SAME shape as one members[] item from findOne, so the
-      // event payload can be appended straight into the frontend's cached group detail.
-      const member = await this.prisma.groupMember.create({
-        data: { groupId, userId, role: MemberRole.MEMBER },
-        select: GROUP_MEMBER_SELECT,
-      });
+      const member = await this.members.createMembership(
+        groupObjectId,
+        userObjectId,
+        MemberRole.MEMBER,
+      );
 
-      // Persist-then-broadcast, same pattern as messages: the row exists before anyone is told.
-      // Emitting here (not in the controller) means every join path fans out through one place;
-      // the ChatGateway's @OnEvent turns this into a `member_joined` broadcast to the group's room.
+      await member.populate('user', 'name email');
+      const memberUser = member.user;
+
       this.events.emit(MEMBER_JOINED, {
         groupId,
-        member,
+        member: {
+          id: member._id.toString(),
+          groupId: member.groupId.toString(),
+          userId: member.userId.toString(),
+          role: member.role,
+          joinedAt: member.joinedAt,
+          lastReadAt: member.lastReadAt ?? null,
+          user: memberUser
+            ? {
+                id: memberUser._id.toString(),
+                name: memberUser.name,
+                email: memberUser.email,
+              }
+            : { id: member.userId.toString(), name: '', email: '' },
+        } satisfies MemberJoinedPayload['member'],
       } satisfies MemberJoinedPayload);
     } catch (error) {
-      // @@unique([groupId, userId]) → P2002 when already a member. Translate the raw constraint
-      // error into a clear, intent-revealing message. (No event is emitted on this path — a
-      // duplicate join is not a new membership.)
-      if (
-        error instanceof Prisma.PrismaClientKnownRequestError &&
-        error.code === 'P2002'
-      ) {
+      if ((error as { code?: number })?.code === 11000) {
         throw new ConflictException('You are already a member of this group');
       }
       throw error;
     }
 
-    // The group itself is returned either way, so the client can navigate straight into it.
-    return group;
+    return group.toObject({ virtuals: true }) as Record<string, unknown>;
   }
 
   /**
@@ -186,41 +215,41 @@ export class GroupsService {
     userId: string,
     groupId: string,
   ): Promise<{ left: true; groupDeleted: boolean; newOwnerId: string | null }> {
-    const outcome = await this.prisma.$transaction(async (tx) => {
-      // Re-read inside the transaction: the guard's copy was loaded before this opened.
-      const me = await tx.groupMember.findUnique({
-        where: { groupId_userId: { groupId, userId } },
-      });
+    const userObjectId = new Types.ObjectId(userId);
+    const groupObjectId = new Types.ObjectId(groupId);
+
+    const outcome = await this.session.withTransaction(async (tx) => {
+      const me = await this.members.findByGroupAndUser(
+        groupObjectId,
+        userObjectId,
+        tx,
+      );
       if (!me) {
         throw new ForbiddenException(NOT_A_MEMBER_MESSAGE);
       }
 
       if (me.role !== MemberRole.OWNER) {
-        await tx.groupMember.delete({ where: { id: me.id } });
+        await this.members.deleteMembership(me._id, tx);
         return { groupDeleted: false, newOwnerId: null };
       }
 
-      // Longest-standing successor; id breaks ties for members who joined in the same millisecond.
-      const successor = await tx.groupMember.findFirst({
-        where: { groupId, userId: { not: userId } },
-        orderBy: [{ joinedAt: 'asc' }, { id: 'asc' }],
-      });
+      const successor = await this.members.findSuccessor(
+        groupObjectId,
+        userObjectId,
+        tx,
+      );
 
       if (!successor) {
-        // Sole member. Deleting the group cascades to its members and messages.
-        await tx.group.delete({ where: { id: groupId } });
+        await this.groups.deleteOne({ _id: groupObjectId }, tx);
+        await this.members.deleteMany({ groupId: groupObjectId }, tx);
         return { groupDeleted: true, newOwnerId: null };
       }
 
-      await tx.groupMember.update({
-        where: { id: successor.id },
-        data: { role: MemberRole.OWNER },
-      });
-      await tx.groupMember.delete({ where: { id: me.id } });
-      return { groupDeleted: false, newOwnerId: successor.userId };
+      await this.members.updateRole(successor._id, MemberRole.OWNER, tx);
+      await this.members.deleteMembership(me._id, tx);
+      return { groupDeleted: false, newOwnerId: successor.userId.toString() };
     });
 
-    // Emitted after the transaction commits, so no listener can observe uncommitted state.
     if (outcome.newOwnerId) {
       this.events.emit(OWNER_CHANGED, {
         groupId,
@@ -228,7 +257,6 @@ export class GroupsService {
         newOwnerId: outcome.newOwnerId,
       } satisfies OwnerChangedPayload);
     }
-    // Not emitted when the group is deleted: no room remains for anyone to hear it in.
     if (!outcome.groupDeleted) {
       this.events.emit(MEMBER_LEFT, {
         groupId,
@@ -247,43 +275,44 @@ export class GroupsService {
    * already has by that name, failing the transfer with an error about column names.
    *
    * The caller's OWNER role is verified INSIDE the transaction. A guard would run before this
-   * opened, so two concurrent transfers could both pass it and both commit, leaving two owners.
+   * opened, so two concurrent transfers could both pass it and leave the group with two owners.
    */
   async transferOwnership(
     callerId: string,
     groupId: string,
     targetUserId: string,
   ): Promise<{ previousOwnerId: string; newOwnerId: string }> {
-    // Checked before the transaction because it needs no database read.
     if (callerId === targetUserId) {
       throw new BadRequestException('You already own this group');
     }
 
-    await this.prisma.$transaction(async (tx) => {
-      const caller = await tx.groupMember.findUnique({
-        where: { groupId_userId: { groupId, userId: callerId } },
-      });
+    const callerObjectId = new Types.ObjectId(callerId);
+    const groupObjectId = new Types.ObjectId(groupId);
+    const targetObjectId = new Types.ObjectId(targetUserId);
+
+    await this.session.withTransaction(async (tx) => {
+      const caller = await this.members.findByGroupAndUser(
+        groupObjectId,
+        callerObjectId,
+        tx,
+      );
       if (!caller || caller.role !== MemberRole.OWNER) {
         throw new ForbiddenException(
           'Only the group owner can transfer ownership',
         );
       }
 
-      const target = await tx.groupMember.findUnique({
-        where: { groupId_userId: { groupId, userId: targetUserId } },
-      });
+      const target = await this.members.findByGroupAndUser(
+        groupObjectId,
+        targetObjectId,
+        tx,
+      );
       if (!target) {
         throw new NotFoundException('That user is not a member of this group');
       }
 
-      await tx.groupMember.update({
-        where: { id: target.id },
-        data: { role: MemberRole.OWNER },
-      });
-      await tx.groupMember.update({
-        where: { id: caller.id },
-        data: { role: MemberRole.MEMBER },
-      });
+      await this.members.updateRole(target._id, MemberRole.OWNER, tx);
+      await this.members.updateRole(caller._id, MemberRole.MEMBER, tx);
     });
 
     this.events.emit(OWNER_CHANGED, {
@@ -303,17 +332,17 @@ export class GroupsService {
    * handlers that need the caller's role, without issuing a second identical query. Callers that
    * only need the assertion (ChatGateway) simply ignore the return.
    */
-  async assertMember(userId: string, groupId: string): Promise<GroupMember> {
-    // Step 5. Checked before the query: a malformed id would otherwise throw a Prisma error,
-    // and its distinct shape would reveal that the id was merely invalid rather than forbidden.
-    if (!isUuid(groupId)) {
+  async assertMember(
+    userId: string,
+    groupId: string,
+  ): Promise<GroupMemberDocument> {
+    if (!isObjectId(groupId)) {
       throw new ForbiddenException(NOT_A_MEMBER_MESSAGE);
     }
-    // The composite unique key, so this is a single indexed lookup.
-    const membership = await this.prisma.groupMember.findUnique({
-      where: { groupId_userId: { groupId, userId } },
-    });
-    // The SAME message and status as the malformed-id branch above — that is the point.
+    const membership = await this.members.findByGroupAndUser(
+      new Types.ObjectId(groupId),
+      new Types.ObjectId(userId),
+    );
     if (!membership) {
       throw new ForbiddenException(NOT_A_MEMBER_MESSAGE);
     }
@@ -328,12 +357,12 @@ export class GroupsService {
     userId: string,
     groupId: string,
   ): Promise<{ lastReadAt: Date }> {
-    // Step 6. One timestamp, used for the write, the event and the response, so all three agree.
     const lastReadAt = new Date();
-    await this.prisma.groupMember.update({
-      where: { groupId_userId: { groupId, userId } },
-      data: { lastReadAt },
-    });
+    await this.members.updateLastRead(
+      new Types.ObjectId(groupId),
+      new Types.ObjectId(userId),
+      lastReadAt,
+    );
     this.events.emit(READ_MARKED, {
       groupId,
       userId,

@@ -2,11 +2,11 @@
  * HOW THIS FILE WORKS
  *   1. catch() builds the error body, then decides how loudly to log it.
  *   2. 5xx is logged with a stack as a fault; 4xx (and 503) at warn without one.
- *   3. buildError() dispatches on the exception type: Prisma, HttpException, or unknown.
+ *   3. buildError() dispatches on the exception type: MongoDB, HttpException, or unknown.
  *   4. fromHttpException() lifts ValidationPipe's message array into `details`.
  *   5. codeForStatus() maps an HTTP status to the stable machine-readable code.
  *
- * The ONLY global filter — @Catch() with no argument catches everything, Prisma included.
+ * The ONLY global filter — @Catch() with no argument catches everything.
  */
 import {
   ArgumentsHost,
@@ -16,25 +16,17 @@ import {
   HttpStatus,
   Logger,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
 import { Request, Response } from 'express';
+import { MongoServerError } from 'mongodb';
 
 import { ErrorCode, ErrorCodeValue, ErrorResponse } from '../http/api-response';
-import { mapPrismaError } from './prisma-error.mapper';
 
 /**
  * Catch-all filter. Guarantees that nothing escapes the API in a shape a client has not seen
  * before — including errors thrown from places no one anticipated.
  *
- * This is the ONLY global filter. A separate PrismaExceptionFilter used to sit beside it, mapping
- * Prisma errors through the same shared mapper to byte-identical output — which meant carrying a
- * comment explaining that their relative precedence did not matter. Deleting it removes the
- * ordering question rather than arguing it. `@Catch()` with no argument catches everything,
- * Prisma included, so nothing is left uncovered.
- *
- * The one thing worth preserving from that filter was its log line, which named the Prisma error
- * code (P2002, P2025). That detail is folded into the warn below — without it, a 409 in the log
- * no longer tells you WHICH constraint tripped.
+ * This is the ONLY global filter. `@Catch()` with no argument catches everything,
+ * MongoDB included, so nothing is left uncovered.
  */
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
@@ -67,14 +59,14 @@ export class AllExceptionsFilter implements ExceptionFilter {
         exception instanceof Error ? exception.stack : String(exception),
       );
     } else {
-      // Name the Prisma code when there is one — a bare "409 CONFLICT" does not say which
+      // Name the MongoDB code when there is one — a bare "409 CONFLICT" does not say which
       // constraint tripped, and that is usually the whole question.
-      const prismaCode =
-        exception instanceof Prisma.PrismaClientKnownRequestError
-          ? ` (Prisma ${exception.code})`
+      const mongoCode =
+        exception instanceof MongoServerError
+          ? ` (Mongo ${exception.code})`
           : '';
       this.logger.warn(
-        `${request.method} ${request.url} -> ${status} ${body.error.code}${prismaCode}`,
+        `${request.method} ${request.url} -> ${status} ${body.error.code}${mongoCode}`,
       );
     }
 
@@ -86,9 +78,9 @@ export class AllExceptionsFilter implements ExceptionFilter {
     status: HttpStatus;
     body: ErrorResponse;
   } {
-    // Step 3. Prisma first, since a Prisma error is not an HttpException.
-    if (exception instanceof Prisma.PrismaClientKnownRequestError) {
-      const { status, code, message } = mapPrismaError(exception);
+    // Step 3. MongoDB first, since a MongoDB error is not an HttpException.
+    if (exception instanceof MongoServerError) {
+      const { status, code, message } = this.mapMongoError(exception);
       return { status, body: { success: false, error: { code, message } } };
     }
 
@@ -111,20 +103,35 @@ export class AllExceptionsFilter implements ExceptionFilter {
     };
   }
 
+  private mapMongoError(exception: MongoServerError): {
+    status: HttpStatus;
+    code: string;
+    message: string;
+  } {
+    // 11000 = duplicate key error
+    if (exception.code === 11000) {
+      return {
+        status: HttpStatus.CONFLICT,
+        code: ErrorCode.CONFLICT,
+        message: 'A record with this value already exists',
+      };
+    }
+
+    // Other MongoDB errors default to internal
+    return {
+      status: HttpStatus.INTERNAL_SERVER_ERROR,
+      code: ErrorCode.INTERNAL_ERROR,
+      message: 'Database error occurred',
+    };
+  }
+
   private fromHttpException(exception: HttpException): {
     status: HttpStatus;
     body: ErrorResponse;
   } {
-    // getStatus() is typed as number; every value it returns is an HTTP status, so narrowing to
-    // HttpStatus lets the comparisons below share an enum type instead of mixing number/enum.
     const status = exception.getStatus();
-    // The payload is `string | object` — both shapes are handled below.
     const payload = exception.getResponse();
 
-    // ValidationPipe throws BadRequestException whose payload carries `message` as an array
-    // of constraint strings. Those become `details`, so a client can map failures to fields
-    // instead of parsing one concatenated sentence.
-    // Step 4. The array check is what distinguishes a validation failure from any other 400.
     if (
       typeof payload === 'object' &&
       payload !== null &&
@@ -143,7 +150,6 @@ export class AllExceptionsFilter implements ExceptionFilter {
       };
     }
 
-    // Three fallbacks in order: a plain string payload, an object's message, the exception's own.
     const message =
       typeof payload === 'string'
         ? payload
@@ -159,7 +165,6 @@ export class AllExceptionsFilter implements ExceptionFilter {
   }
 
   private codeForStatus(status: HttpStatus): ErrorCodeValue {
-    // Step 5. Explicit cases first; the default only catches statuses not listed here.
     switch (status) {
       case HttpStatus.BAD_REQUEST:
         return ErrorCode.BAD_REQUEST;
@@ -171,8 +176,6 @@ export class AllExceptionsFilter implements ExceptionFilter {
         return ErrorCode.NOT_FOUND;
       case HttpStatus.CONFLICT:
         return ErrorCode.CONFLICT;
-      // Listed explicitly because the range fallback below would flatten it to INTERNAL_ERROR,
-      // telling clients not to retry a condition that is usually transient.
       case HttpStatus.SERVICE_UNAVAILABLE:
         return ErrorCode.SERVICE_UNAVAILABLE;
       default:

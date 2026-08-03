@@ -1,4 +1,4 @@
-import { MessageType } from '@prisma/client';
+import { MessageType } from '../modules/messages/schemas/message.schema';
 
 import { NotificationPublisher } from './notification.publisher';
 import { roomFor } from '../chat/chat.constants';

@@ -1,6 +1,6 @@
 /**
  * HOW THIS FILE WORKS
- *   1. Import infrastructure: config, Prisma, the in-process event bus, the BullMQ connection.
+ *   1. Import infrastructure: config, Database, the in-process event bus, the BullMQ connection.
  *   2. Import every feature module.
  *   3. Bind the global ValidationPipe as APP_PIPE.
  *   4. Bind the two response interceptors — ORDER MATTERS, see the note below.
@@ -24,10 +24,10 @@ import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
 import { AuthModule } from './auth/auth.module';
 import { ChatModule } from './chat/chat.module';
+import { DatabaseModule } from './common/database/database.module';
 import { GroupsModule } from './groups/groups.module';
 import { HealthModule } from './health/health.module';
 import { MessagesModule } from './messages/messages.module';
-import { PrismaModule } from './prisma/prisma.module';
 import { SummaryModule } from './summary/summary.module';
 import { UsersModule } from './users/users.module';
 
@@ -45,7 +45,7 @@ import { UsersModule } from './users/users.module';
 @Module({
   imports: [
     AppConfigModule,
-    PrismaModule,
+    DatabaseModule,
     // The in-process bus behind MESSAGE_CREATED, MEMBER_JOINED and friends.
     EventEmitterModule.forRoot(),
     // The API is a queue PRODUCER only; the four workers are the consumers.

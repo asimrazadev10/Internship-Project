@@ -4,7 +4,7 @@ import { Test } from '@nestjs/testing';
 
 import { AppModule } from './../src/app.module';
 import { MessagesService } from './../src/messages/messages.service';
-import { PrismaService } from './../src/prisma/prisma.service';
+import { TestDb } from './test-db';
 import {
   MESSAGE_CREATED,
   MessageCreatedPayload,
@@ -12,7 +12,7 @@ import {
 
 describe('MessagesService events (e2e)', () => {
   let app: INestApplication;
-  let prisma: PrismaService;
+  let prisma: TestDb;
   let messages: MessagesService;
   let events: EventEmitter2;
   let userId: string;
@@ -23,7 +23,7 @@ describe('MessagesService events (e2e)', () => {
       imports: [AppModule],
     }).compile();
     app = mod.createNestApplication();
-    prisma = app.get(PrismaService);
+    prisma = new TestDb(app);
     messages = app.get(MessagesService);
     events = app.get(EventEmitter2);
     await app.init();

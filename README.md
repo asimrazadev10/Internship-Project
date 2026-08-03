@@ -91,6 +91,28 @@ of them together.
 | Flag | Effect |
 |---|---|
 | `-NoWorkers` | Chat only; AI summaries are not generated |
+| `-WebPorts 3000,3001,...,3005` | **Web-only farm** — build once, then serve N frontend instances on those ports, no Docker/API/workers (Next.js dev won't run two servers in one project, so it serves the compiled build) |
+| `-NoWorkers` | Force every worker off (same as `IS_WORKER_ENABLED=false`) |
+
+> **Per-service placement.** The runner maps services to hosts — API on **3000**, frontend on
+> **3001**, and the four BullMQ workers on **3002–3005** (process labels; workers don't bind HTTP).
+> Whether each actually starts is decided by global switches and the feature flags in
+> `backend/.env`:
+>
+> | Port | Service | Flag |
+> |---|---|---|
+> | 3000 | API (`backend`) | `SERVICE_API_ENABLED` |
+> | 3001 | Frontend (`frontend`) | `SERVICE_WEB_ENABLED` |
+> | 3002 | Scheduler worker | `SERVICE_SCHEDULER_ENABLED` |
+> | 3003 | AI worker | `SERVICE_AI_ENABLED` |
+> | 3004 | Summary worker | `SERVICE_SUMMARY_ENABLED` |
+> | 3005 | Notification worker | `SERVICE_NOTIFICATION_ENABLED` |
+>
+> `IS_WORKER_ENABLED` is the master switch for the four workers and wins over the per-worker
+> flags. Example — chat + summaries but no AI (manual trigger becomes a no-op) and no
+> notification fan-out: set `SERVICE_AI_ENABLED=false` and `SERVICE_NOTIFICATION_ENABLED=false`.
+> `-NoWorkers` is shorthand for `IS_WORKER_ENABLED=false`. The startup env validation
+> (`backend/src/config/env.validation.ts`) also validates these flags so a typo fails at boot.
 | `-Prod` | Run the compiled API (`start:prod`) instead of watch mode — lower memory |
 | `-SkipMigrate` | Skip `prisma migrate deploy` |
 | `-Clean` | Delete `frontend/.next` and `backend/dist` first; use after a force-killed run |
@@ -304,6 +326,9 @@ than failing later on the first request that needs it.
 | Variable | Purpose | Default |
 |---|---|---|
 | `PORT`, `NODE_ENV` | App | `3000`, `development` |
+| `IS_WORKER_ENABLED` | Master feature flag — starts (true) or skips (false) all four BullMQ workers | `true` |
+| `SERVICE_API_ENABLED`, `SERVICE_WEB_ENABLED` | Run the API / frontend | `true` |
+| `SERVICE_{SCHEDULER,AI,SUMMARY,NOTIFICATION}_ENABLED` | Run each worker individually | `true` |
 | `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `POSTGRES_PORT` | Consumed by `docker-compose.yml` | `chatuser`, `chatpass`, `chatdb`, `55432` |
 | `DATABASE_URL` | Postgres connection — port must match `POSTGRES_PORT` | — |
 | `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET` | **Different** secrets, so a leaked access secret cannot mint refresh tokens | — (required) |

@@ -49,7 +49,12 @@ param(
   # Published Postgres port. Matches POSTGRES_PORT in docker-compose.yml.
   [int]$PostgresPort = 55432,
   # Published Redis port.
-  [int]$RedisPort = 6379
+  [int]$RedisPort = 6379,
+  # Web (frontend) instances to run ALONE, with no API/Docker/workers. Each port is one Next.js
+  # instance served from a single `next build` via `next start`; e.g. -WebPorts 3000..3005 runs
+  # six frontends. Dev mode is not used here: Next.js forbids two dev servers in the same project.
+  # The frontend's BACKEND_ORIGIN / NEXT_PUBLIC_SOCKET_URL must name a running backend for data.
+  [int[]]$WebPorts = @()
 )
 
 $ErrorActionPreference = 'Stop'
@@ -153,6 +158,61 @@ if ($blocked.Count -gt 0) {
 }
 Write-Ok 'Ports 3000 and 3001 are free.'
 
+# ------------------------------------------------------ web-only farm (-WebPorts)
+if ($WebPorts.Count -gt 0) {
+  Write-Step 'fn' 'Web-only farm (no API, no Docker, no workers)'
+
+  # Every instance reads the same frontend/.env. Each port must be free before we start.
+  $blocked = @()
+  foreach ($p in $WebPorts | Sort-Object -Unique) {
+    $ErrorActionPreference = 'SilentlyContinue'
+    $busy = Get-NetTCPConnection -State Listen -LocalPort $p -ErrorAction SilentlyContinue
+    $ErrorActionPreference = 'Stop'
+    if ($busy) {
+      $ownerPid = $busy[0].OwningProcess
+      $procName = (Get-Process -Id $ownerPid -ErrorAction SilentlyContinue).ProcessName
+      Write-Fail "port $p is already in use by $procName (PID $ownerPid)."
+      $blocked += $ownerPid
+    }
+  }
+  if ($blocked.Count -gt 0) {
+    Write-Warn2 "Aborting: free those ports first, e.g. Stop-Process -Id $($blocked -join ',') -Force"
+    exit 1
+  }
+  Write-Ok "Ports $($WebPorts -join ', ') are free."
+
+  $names  = (($WebPorts | ForEach-Object { "web$_" }) -join ',')
+  $colors = (($WebPorts | ForEach-Object { 'green' }) -join ',')
+
+  # Build once, serve N times. Next.js dev mode refuses to run a second dev server in the same
+  # project (a per-directory lock), so the farm serves the compiled build via `next start` - one
+  # listener per port with no lock. Takes ~30-60s the first time.
+  Write-Host '    Building the frontend once (a fresh build is needed for `next start`)...' -ForegroundColor Gray
+  npm --prefix frontend run build
+  if ($LASTEXITCODE -ne 0) { Write-Fail 'Frontend build failed.'; exit 1 }
+  $commands = @($WebPorts | ForEach-Object {
+    "npm --prefix frontend run start:p -- -p $_"
+  })
+
+  Write-Host ''
+  foreach ($p in $WebPorts) {
+    Write-Host "  Frontend  http://localhost:$p" -ForegroundColor Gray
+  }
+  Write-Host ''
+  Write-Host '  Ctrl-C stops them all. No Docker, API or workers are started by this mode.' -ForegroundColor Gray
+  Write-Host ''
+  Write-Host '  The app still calls a backend named by frontend/.env (BACKEND_ORIGIN /' -ForegroundColor Gray
+  Write-Host '  NEXT_PUBLIC_SOCKET_URL) - run that separately or data requests will fail.' -ForegroundColor Gray
+  Write-Host ''
+
+  & '.\backend\node_modules\.bin\concurrently.cmd' `
+    --names $names `
+    --prefix-colors $colors `
+    --kill-others-on-fail `
+    $commands
+  exit 0
+}
+
 # ---------------------------------------------------------------- docker
 Write-Step 2 'Postgres and Redis'
 
@@ -226,35 +286,95 @@ Write-Step 5 'Starting API, workers and frontend'
 
 $apiScript = if ($Prod) { 'start:prod' } else { 'start:dev' }
 
-# Relative --prefix paths, so nothing here contains the space in the repo path.
-# npm --prefix sets the script's working directory, which is what nest and next need.
-if ($NoWorkers) {
-  $names    = 'api,web'
-  $colors   = 'cyan,green'
-  $commands = @(
-    "npm --prefix backend run $apiScript",
-    'npm --prefix frontend run dev'
-  )
-} else {
-  $names    = 'api,wrk,web'
-  $colors   = 'cyan,magenta,green'
-  $commands = @(
-    "npm --prefix backend run $apiScript",
-    # The wait is load-bearing, not politeness. nest-cli.json sets deleteOutDir: true, so
-    # `nest start --watch` DELETES dist/ and rebuilds it -- and these four workers run from
-    # dist/. Started together, the workers lose the race and die with
-    # "Cannot find module './scheduler-worker.module'". The API's port opening means its
-    # compile finished, so dist/ is whole by the time the workers load it.
-    # This holds only because preflight aborts on a bound 3000 -- a stale API would open the gate early.
-    'node scripts/wait-for-port.js 3000 180 && npm --prefix backend run workers:all',
-    'npm --prefix frontend run dev'
-  )
+# Feature flags (backend/.env) decide which services the runner starts. IS_WORKER_ENABLED is the
+# master switch for the four workers; each SERVICE_*_ENABLED restricts one service. -NoWorkers
+# still forces every worker off. Values are read loosely here (the backend itself validates them
+# strictly at boot via env.validation.ts).
+function Get-BackendEnvBool {
+  param([string]$Key, [bool]$Default = $true)
+  $line = Get-Content 'backend\.env' -ErrorAction SilentlyContinue |
+    Where-Object { $_ -match "^\s*$Key\s*=" } | Select-Object -First 1
+  if (-not $line) { return $Default }
+  $val = $line.Substring($line.IndexOf('=') + 1).Trim().Trim('"').Trim("'")
+  switch ($val.ToLowerInvariant()) {
+    'true'  { return $true }
+    'false' { return $false }
+    default { return $Default }
+  }
 }
 
+$apiEnabled   = Get-BackendEnvBool 'SERVICE_API_ENABLED'
+$webEnabled   = Get-BackendEnvBool 'SERVICE_WEB_ENABLED'
+$workerMaster = Get-BackendEnvBool 'IS_WORKER_ENABLED'
+if ($NoWorkers) { $workerMaster = $false }
+$svcFlags = @{
+  scheduler    = Get-BackendEnvBool 'SERVICE_SCHEDULER_ENABLED'
+  ai           = Get-BackendEnvBool 'SERVICE_AI_ENABLED'
+  summary      = Get-BackendEnvBool 'SERVICE_SUMMARY_ENABLED'
+  notification = Get-BackendEnvBool 'SERVICE_NOTIFICATION_ENABLED'
+}
+$runWorkers = $workerMaster -and (($svcFlags.Values | Where-Object { $_ } | Measure-Object).Count -gt 0)
+
+# One row per worker: (flag id, concurrently name, host port, npm script, label, log colour).
+# Both modes below build their command list from this table, so a disabled worker is simply absent.
+$workerTable = @(
+  @{ id='scheduler';    name='sch'; port=3002; script='worker:scheduler';    label='Scheduler   '; color='blue' }
+  @{ id='ai';           name='ai';  port=3003; script='worker:ai';           label='AI          '; color='yellow' }
+  @{ id='summary';      name='sum'; port=3004; script='worker:summary';      label='Summary     '; color='magenta' }
+  @{ id='notification'; name='not'; port=3005; script='worker:notification'; label='Notification'; color='red' }
+)
+
+# A worker runs from dist/, which watch mode deletes and rebuilds on API start — so each worker
+# waits for the API's port to open as proof the compile finished. If the API is disabled there is
+# nothing to gate on, and dist/ must already exist (built on a previous run; we build if missing).
+if ($runWorkers -and -not $apiEnabled -and -not (Test-Path 'backend/dist/main.js')) {
+  Write-Host '    SERVICE_API_ENABLED=false but dist/ is missing - building backend for the workers...' -ForegroundColor Yellow
+  npm --prefix backend run build
+  if ($LASTEXITCODE -ne 0) { Write-Fail 'Backend build failed.'; exit 1 }
+}
+$workerGate = if ($apiEnabled) { 'node scripts/wait-for-port.js 3000 180 && ' } else { '' }
+
+# Colors: api=cyan, web=green, plus the per-worker colour in $workerTable.
+$entries = @()
+if ($apiEnabled) {
+  $entries += @{ name='api'; color='cyan';  cmd="npm --prefix backend run $apiScript" }
+}
+foreach ($w in $workerTable) {
+  if ($workerMaster -and $svcFlags[$w.id]) {
+    $entries += @{ name=$w.name; color=$w.color; cmd=("$workerGate" + "npm --prefix backend run $($w.script)") }
+  }
+}
+if ($webEnabled) {
+  $entries += @{ name='web'; color='green'; cmd='npm --prefix frontend run dev' }
+}
+
+if ($entries.Count -eq 0) {
+  Write-Fail 'Every service is disabled by the SERVICE_*_ENABLED flags - nothing to start.'
+  exit 1
+}
+
+$names    = ($entries | ForEach-Object { $_.name }) -join ','
+$colors   = ($entries | ForEach-Object { $_.color }) -join ','
+$commands = @($entries | ForEach-Object { $_.cmd })
+
 Write-Host ''
-Write-Host '  API       http://localhost:3000' -ForegroundColor Gray
-Write-Host '  Frontend  http://localhost:3001' -ForegroundColor Gray
-Write-Host '  Health    http://localhost:3000/health/ready' -ForegroundColor Gray
+if ($apiEnabled) { Write-Host '  API          http://localhost:3000' -ForegroundColor Gray }
+if ($webEnabled) { Write-Host '  Frontend     http://localhost:3001' -ForegroundColor Gray }
+foreach ($w in $workerTable) {
+  if ($workerMaster -and $svcFlags[$w.id]) {
+    Write-Host "  $($w.label) http://localhost:$($w.port)  (worker process - no HTTP)" -ForegroundColor Gray
+  }
+}
+if ($apiEnabled) { Write-Host '  Health       http://localhost:3000/health/ready' -ForegroundColor Gray }
+$disabled = @()
+if (-not $apiEnabled) { $disabled += 'API (3000)' }
+if (-not $webEnabled) { $disabled += 'frontend (3001)' }
+foreach ($w in $workerTable) {
+  if (-not ($workerMaster -and $svcFlags[$w.id])) { $disabled += "$($w.label.Trim()) worker (300$($w.port - 3000))" }
+}
+if ($disabled.Count -gt 0) {
+  Write-Host "  Skipped by feature flags: $($disabled -join ', ')" -ForegroundColor Yellow
+}
 Write-Host ''
 Write-Host '  Ctrl-C stops all of the above. Docker keeps running (.\dev.ps1 -Down to stop it).' -ForegroundColor Gray
 Write-Host ''

@@ -1,7 +1,7 @@
 /**
  * HOW THIS FILE WORKS
  *   1. Import AppConfigModule for ConfigService and the validated env.
- *   2. Import PrismaModule — the tick queries Postgres for active groups.
+ *   2. Import DatabaseModule — the tick queries MongoDB for active groups.
  *   3. Open the shared Redis connection used by every BullMQ queue here.
  *   4. Register scheduler-queue, the queue this worker drains.
  *   5. Register the summary-flow FlowProducer, which lets the tick add whole job trees.
@@ -17,7 +17,7 @@ import { BullModule } from '@nestjs/bullmq';
 
 import { RefreshTokenPurgeModule } from '../auth/refresh-token-purge.module';
 import { AppConfigModule } from '../config/config.module';
-import { PrismaModule } from '../prisma/prisma.module';
+import { DatabaseModule } from '../common/database/database.module';
 import { bullConnectionFactory } from '../config/redis.config';
 import { SCHEDULER_QUEUE, SUMMARY_FLOW } from '../queues/queue.constants';
 import { SchedulerProcessor } from '../summary/stages/scheduler.processor';
@@ -28,7 +28,7 @@ import { SummaryService } from '../summary/summary.service';
     // Step 1. ConfigService, plus the env validation that runs at boot.
     AppConfigModule,
     // Step 2. Needed by findActiveGroups and by the token purge.
-    PrismaModule,
+    DatabaseModule,
     // Step 3. Same factory as the other workers, so connection settings cannot drift.
     BullModule.forRootAsync({
       inject: [ConfigService],

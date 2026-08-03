@@ -4,7 +4,7 @@ import request from 'supertest';
 import { App } from 'supertest/types';
 
 import { AppModule } from './../src/app.module';
-import { PrismaService } from './../src/prisma/prisma.service';
+import { TestDb } from './test-db';
 
 /**
  * POST /summaries/run — the manual "run summaries now" trigger.
@@ -16,7 +16,7 @@ import { PrismaService } from './../src/prisma/prisma.service';
  */
 describe('POST /summaries/run (e2e)', () => {
   let app: INestApplication<App>;
-  let prisma: PrismaService;
+  let prisma: TestDb;
 
   const user = {
     email: `summary-e2e-${Date.now()}@example.com`,
@@ -37,7 +37,7 @@ describe('POST /summaries/run (e2e)', () => {
         transform: true,
       }),
     );
-    prisma = app.get(PrismaService);
+    prisma = new TestDb(app);
     await app.init();
   });
 

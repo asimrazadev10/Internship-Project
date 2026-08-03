@@ -2,7 +2,7 @@ import { validateEnv } from './env.validation';
 
 const base = {
   NODE_ENV: 'test',
-  DATABASE_URL: 'postgres://u:p@localhost:5432/db',
+  MONGODB_URI: 'mongodb://localhost:27017/testdb',
   JWT_ACCESS_SECRET: 'a'.repeat(32),
   JWT_REFRESH_SECRET: 'b'.repeat(32),
   GOOGLE_CLIENT_ID: 'client-id',
@@ -43,5 +43,59 @@ describe('validateEnv — Phase 5 worker concurrency', () => {
   it('coerces a concurrency knob from a string', () => {
     const cfg = validateEnv({ ...base, AI_WORKER_CONCURRENCY: '4' });
     expect(cfg.AI_WORKER_CONCURRENCY).toBe(4);
+  });
+});
+
+describe('validateEnv — IS_WORKER_ENABLED feature flag', () => {
+  it('defaults to true when unset', () => {
+    expect(validateEnv(base).IS_WORKER_ENABLED).toBe(true);
+  });
+
+  it('keeps a literal "false" as false (not coerced by @Type)', () => {
+    const cfg = validateEnv({ ...base, IS_WORKER_ENABLED: 'false' });
+    expect(cfg.IS_WORKER_ENABLED).toBe(false);
+  });
+
+  it('accepts "true"', () => {
+    expect(
+      validateEnv({ ...base, IS_WORKER_ENABLED: 'true' }).IS_WORKER_ENABLED,
+    ).toBe(true);
+  });
+
+  it('rejects a malformed value rather than silently defaulting', () => {
+    expect(() => validateEnv({ ...base, IS_WORKER_ENABLED: '1' })).toThrow(
+      /IS_WORKER_ENABLED/,
+    );
+    expect(() => validateEnv({ ...base, IS_WORKER_ENABLED: 'yes' })).toThrow(
+      /IS_WORKER_ENABLED/,
+    );
+  });
+});
+
+describe('validateEnv — per-service flags', () => {
+  it('defaults every SERVICE_*_ENABLED to true', () => {
+    const cfg = validateEnv(base);
+    expect(cfg.SERVICE_SCHEDULER_ENABLED).toBe(true);
+    expect(cfg.SERVICE_AI_ENABLED).toBe(true);
+    expect(cfg.SERVICE_SUMMARY_ENABLED).toBe(true);
+    expect(cfg.SERVICE_NOTIFICATION_ENABLED).toBe(true);
+  });
+
+  it('lets each worker be disabled independently', () => {
+    const cfg = validateEnv({
+      ...base,
+      SERVICE_AI_ENABLED: 'false',
+      SERVICE_NOTIFICATION_ENABLED: 'false',
+    });
+    expect(cfg.SERVICE_AI_ENABLED).toBe(false);
+    expect(cfg.SERVICE_NOTIFICATION_ENABLED).toBe(false);
+    expect(cfg.SERVICE_SCHEDULER_ENABLED).toBe(true);
+    expect(cfg.SERVICE_SUMMARY_ENABLED).toBe(true);
+  });
+
+  it('rejects a malformed per-service flag', () => {
+    expect(() => validateEnv({ ...base, SERVICE_AI_ENABLED: 'nope' })).toThrow(
+      /SERVICE_AI_ENABLED/,
+    );
   });
 });

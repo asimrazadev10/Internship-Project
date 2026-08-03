@@ -1,4 +1,4 @@
-import { MessageType } from '@prisma/client';
+import { MessageType } from '../../modules/messages/schemas/message.schema';
 
 import { PublishProcessor } from './publish.processor';
 import type { SaveResult } from './stage.types';

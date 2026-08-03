@@ -8,7 +8,8 @@
  * These decouple the writer from the broadcaster: MessagesService emits, ChatGateway listens, and
  * neither imports the other.
  */
-import { MessageType } from '@prisma/client';
+import { Types } from 'mongoose';
+import { MessageType } from '../modules/messages/schemas/message.schema';
 
 /** Emitted after a message row is persisted. Any transport (WS, future channels) listens. */
 // Emitted AFTER the write commits, so a listener can never observe a message that does not exist.
@@ -43,6 +44,27 @@ export interface MessageCreatedPayload {
 
 export interface MessageUpdatedPayload {
   message: BroadcastMessage;
+}
+
+/**
+ * The hydrated Message document shape read by the broadcast mappers (populated `sender` and
+ * `reactions` virtuals included). Declared so the two `toBroadcastMessage` implementations in
+ * MessagesService and SummaryProcessor can map without touching `any`.
+ */
+export interface PopulatedMessage {
+  _id: Types.ObjectId;
+  groupId: Types.ObjectId;
+  content: string;
+  type: MessageType;
+  createdAt: Date;
+  editedAt?: Date;
+  deletedAt?: Date;
+  senderId?: Types.ObjectId | null;
+  sender?: { _id: Types.ObjectId; name: string } | null;
+  reactions?: { emoji: string; userId: Types.ObjectId }[];
+  attachmentUrl?: string | null;
+  attachmentName?: string | null;
+  attachmentMime?: string | null;
 }
 
 /** Emitted after a message's reactions change, so the gateway can broadcast the new set. */

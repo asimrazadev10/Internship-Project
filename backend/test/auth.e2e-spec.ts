@@ -4,7 +4,7 @@ import request from 'supertest';
 import { App } from 'supertest/types';
 
 import { AppModule } from './../src/app.module';
-import { PrismaService } from './../src/prisma/prisma.service';
+import { TestDb } from './test-db';
 
 /**
  * Exercises the full local-auth flow against the real database: registration, login, the
@@ -16,7 +16,7 @@ import { PrismaService } from './../src/prisma/prisma.service';
  */
 describe('Auth (e2e)', () => {
   let app: INestApplication<App>;
-  let prisma: PrismaService;
+  let prisma: TestDb;
 
   const user = {
     email: `auth-e2e-${Date.now()}@example.com`,
@@ -38,7 +38,7 @@ describe('Auth (e2e)', () => {
         transform: true,
       }),
     );
-    prisma = app.get(PrismaService);
+    prisma = new TestDb(app);
     await app.init();
   });
 

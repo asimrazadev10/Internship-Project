@@ -1,72 +1,64 @@
-import { MessageType } from '@prisma/client';
+import { Types } from 'mongoose';
+import { MessageType } from '../modules/messages/schemas/message.schema';
 
 import { SummaryMessagesService } from './summary-messages.service';
+import { MessageRepository } from '../common/database/repositories/message.repository';
+
+const GROUP_ID = '507f1f77bcf86cd799439011';
+const GROUP_OBJECT_ID = new Types.ObjectId(GROUP_ID);
 
 function makeService() {
-  const prisma = {
-    message: {
-      create: jest.fn().mockResolvedValue({
-        id: 'm1',
-        groupId: 'g1',
-        content: 'summary text',
-        type: MessageType.AI_SUMMARY,
-        createdAt: new Date(),
-        senderId: null,
-        sender: null,
-      }),
-      findMany: jest.fn().mockResolvedValue([]),
-      count: jest.fn().mockResolvedValue(0),
-    },
+  const messages = {
+    persistAiSummary: jest.fn().mockResolvedValue({
+      _id: GROUP_OBJECT_ID,
+      groupId: GROUP_OBJECT_ID,
+      content: 'summary text',
+      type: MessageType.AI_SUMMARY,
+      createdAt: new Date(),
+      senderId: null,
+      sender: null,
+    }),
+    findForSummary: jest.fn().mockResolvedValue([]),
+    hasSummarySince: jest.fn().mockResolvedValue(false),
   };
-  const service = new SummaryMessagesService(prisma as never);
-  return { service, prisma };
+  const service = new SummaryMessagesService(
+    messages as unknown as MessageRepository,
+  );
+  return { service, messages };
 }
 
 describe('SummaryMessagesService.persistAiSummary', () => {
   it('persists an AI_SUMMARY with a null sender', async () => {
-    const { service, prisma } = makeService();
-    const msg = await service.persistAiSummary('g1', 'summary text');
+    const { service, messages } = makeService();
+    const msg = await service.persistAiSummary(GROUP_ID, 'summary text');
 
-    expect(prisma.message.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: {
-          groupId: 'g1',
-          senderId: null,
-          content: 'summary text',
-          type: MessageType.AI_SUMMARY,
-        },
-      }),
+    expect(messages.persistAiSummary).toHaveBeenCalledWith(
+      GROUP_OBJECT_ID,
+      'summary text',
     );
     expect(msg.type).toBe(MessageType.AI_SUMMARY);
   });
 
   /**
    * The old version of this test asserted `emit` was never called, which it could only do because
-   * the service took an EventEmitter2. After the split it takes PrismaService alone, so "does not
+   * the service took an EventEmitter2. After the split it takes MessageRepository alone, so "does not
    * broadcast" is now guaranteed by the constructor signature rather than by an assertion — a
    * stronger guarantee than the test it replaces. Worth being able to say that out loud.
    */
-  it('has no way to emit: the service depends on Prisma only', () => {
+  it('has no way to emit: the service depends on MessageRepository only', () => {
     expect(SummaryMessagesService.length).toBe(1);
   });
 });
 
 describe('SummaryMessagesService.findForSummary', () => {
   it('queries only USER messages since the window start, oldest first', async () => {
-    const { service, prisma } = makeService();
+    const { service, messages } = makeService();
     const since = new Date('2026-07-22T00:00:00Z');
-    await service.findForSummary('g1', since);
+    await service.findForSummary(GROUP_ID, since);
 
-    expect(prisma.message.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: {
-          groupId: 'g1',
-          type: MessageType.USER,
-          createdAt: { gte: since },
-          deletedAt: null,
-        },
-        orderBy: { createdAt: 'asc' },
-      }),
+    expect(messages.findForSummary).toHaveBeenCalledWith(
+      GROUP_OBJECT_ID,
+      since,
     );
   });
 });
@@ -74,7 +66,7 @@ describe('SummaryMessagesService.findForSummary', () => {
 describe('SummaryMessagesService.hasSummarySince', () => {
   it('is false when no AI_SUMMARY exists in the window', async () => {
     const { service } = makeService();
-    await expect(service.hasSummarySince('g1', new Date())).resolves.toBe(
+    await expect(service.hasSummarySince(GROUP_ID, new Date())).resolves.toBe(
       false,
     );
   });

@@ -11,7 +11,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 
-import { PrismaService } from '../prisma/prisma.service';
+import { RefreshTokenRepository } from '../common/database/repositories/refresh-token.repository';
 
 /**
  * Deletes refresh-token rows that are long past expiry.
@@ -28,14 +28,14 @@ import { PrismaService } from '../prisma/prisma.service';
  * Lives in its own tiny module rather than on TokenService for the same reason
  * SummaryMessagesService exists: the caller is the standalone scheduler worker, and TokenService
  * drags in JwtService and the whole AuthModule graph — none of which a worker with no HTTP server
- * has any use for. This class depends on PrismaService alone.
+ * has any use for. This class depends on RefreshTokenRepository alone.
  */
 @Injectable()
 export class RefreshTokenPurgeService {
   private readonly logger = new Logger(RefreshTokenPurgeService.name);
 
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly refreshTokens: RefreshTokenRepository,
     private readonly config: ConfigService,
   ) {}
 
@@ -49,9 +49,7 @@ export class RefreshTokenPurgeService {
     const cutoff = new Date(Date.now() - graceMs);
 
     // Step 3. Expiry-only predicate — revoked-but-unexpired rows must survive.
-    const { count } = await this.prisma.refreshToken.deleteMany({
-      where: { expiresAt: { lt: cutoff } },
-    });
+    const count = await this.refreshTokens.purgeExpired(graceMs);
 
     // Logged even at zero: a purge that silently stops running is otherwise invisible, and this
     // line is the only evidence the schedule is alive.

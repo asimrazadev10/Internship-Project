@@ -21,3 +21,18 @@ const UUID_RE =
 export function isUuid(value: unknown): value is string {
   return typeof value === 'string' && UUID_RE.test(value);
 }
+
+// 24 hex chars - the MongoDB ObjectId format used for every id since the uuid->ObjectId
+// migration. Matching a strict subset of the uuid shape; a 24-hex ObjectId is not a UUID but
+// is the format the routes now receive.
+const OBJECT_ID_RE = /^[0-9a-f]{24}$/i;
+
+export function isObjectId(value: unknown): value is string {
+  return typeof value === 'string' && OBJECT_ID_RE.test(value);
+}
+
+// True for either the ObjectId or the legacy UUID form, so route/guard id validation keeps
+// accepting valid ids after the format change.
+export function isValidDbId(value: unknown): value is string {
+  return isUuid(value) || isObjectId(value);
+}

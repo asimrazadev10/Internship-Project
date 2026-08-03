@@ -4,14 +4,13 @@
  *   2. findForSummary() — the window's USER messages, oldest first, for the transcript.
  *   3. hasSummarySince() — the idempotency guard the fetch stage calls first.
  *
- * Three queries, PrismaService as the only dependency. Called exclusively by SummaryProcessor in
+ * Three queries, MongoDB as the only dependency. Called exclusively by SummaryProcessor in
  * the standalone summary worker.
  */
 import { Injectable } from '@nestjs/common';
-import { MessageType } from '@prisma/client';
+import { Types } from 'mongoose';
 
-import { PrismaService } from '../prisma/prisma.service';
-import { MESSAGE_SELECT } from './message.select';
+import { MessageRepository } from '../common/database/repositories/message.repository';
 
 /**
  * The message queries the AI summary pipeline needs — and nothing else.
@@ -23,7 +22,7 @@ import { MESSAGE_SELECT } from './message.select';
  * EventEmitterModule purely to satisfy a dependency the worker never used — with a comment
  * apologising for it.
  *
- * This service depends on PrismaService alone.
+ * This service depends on MessageRepository alone.
  *
  * Note the deliberate asymmetry with MessagesService: `persistAiSummary` writes WITHOUT emitting,
  * while everything in MessagesService emits. Previously those two behaviours sat three lines
@@ -32,7 +31,7 @@ import { MESSAGE_SELECT } from './message.select';
  */
 @Injectable()
 export class SummaryMessagesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly messages: MessageRepository) {}
 
   /**
    * Persist an AI summary as a message with no human sender, WITHOUT broadcasting.
@@ -43,46 +42,16 @@ export class SummaryMessagesService {
    * double-broadcasting once the publish stage runs.
    */
   persistAiSummary(groupId: string, content: string) {
-    // Step 1. senderId: null is what marks it as system-authored; MESSAGE_SELECT returns the row
-    // in broadcast shape so the publish stage needs no second read.
-    return this.prisma.message.create({
-      data: { groupId, senderId: null, content, type: MessageType.AI_SUMMARY },
-      select: MESSAGE_SELECT,
-    });
+    return this.messages.persistAiSummary(new Types.ObjectId(groupId), content);
   }
 
   /** The window's USER messages (oldest first) that a summary is built from. */
   findForSummary(groupId: string, since: Date) {
-    return this.prisma.message.findMany({
-      where: {
-        groupId,
-        // USER only — feeding previous summaries back to the model would compound their errors.
-        type: MessageType.USER,
-        createdAt: { gte: since },
-        // Soft-deleted messages are excluded: a user who deleted something meant it to be gone.
-        deletedAt: null,
-      },
-      // Step 2. Chronological, because a transcript out of order reads as a different conversation.
-      orderBy: { createdAt: 'asc' },
-      // A narrower select than MESSAGE_SELECT — the model only needs the author name and text.
-      select: {
-        content: true,
-        createdAt: true,
-        sender: { select: { name: true } },
-      },
-    });
+    return this.messages.findForSummary(new Types.ObjectId(groupId), since);
   }
 
   /** Idempotency guard: has an AI_SUMMARY already been posted for this group in the window? */
   async hasSummarySince(groupId: string, since: Date): Promise<boolean> {
-    // Step 3. The authoritative duplicate check — it asks Postgres, so it survives a Redis flush.
-    const count = await this.prisma.message.count({
-      where: {
-        groupId,
-        type: MessageType.AI_SUMMARY,
-        createdAt: { gte: since },
-      },
-    });
-    return count > 0;
+    return this.messages.hasSummarySince(new Types.ObjectId(groupId), since);
   }
 }

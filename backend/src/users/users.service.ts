@@ -7,9 +7,12 @@
  * Persistence only. Hashing, tokens and verification all live in the auth module.
  */
 import { Injectable } from '@nestjs/common';
-import { AuthProvider, Prisma, User } from '@prisma/client';
+import {
+  AuthProvider,
+  UserDocument,
+} from '../modules/users/schemas/user.schema';
 
-import { PrismaService } from '../prisma/prisma.service';
+import { UserRepository } from '../common/database/repositories/user.repository';
 
 /**
  * Owns all persistence for User rows. Auth logic (hashing, tokens, verification) lives in the
@@ -18,15 +21,15 @@ import { PrismaService } from '../prisma/prisma.service';
  */
 @Injectable()
 export class UsersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly users: UserRepository) {}
 
-  findById(id: string): Promise<User | null> {
-    return this.prisma.user.findUnique({ where: { id } });
+  findById(id: string): Promise<UserDocument | null> {
+    return this.users.findById(id);
   }
 
   // Callers pass an already-normalised email; the DTOs guarantee that.
-  findByEmail(email: string): Promise<User | null> {
-    return this.prisma.user.findUnique({ where: { email } });
+  findByEmail(email: string): Promise<UserDocument | null> {
+    return this.users.findByEmail(email);
   }
 
   /**
@@ -36,21 +39,23 @@ export class UsersService {
   findByProviderId(
     provider: AuthProvider,
     providerId: string,
-  ): Promise<User | null> {
-    // Step 2. The composite unique key — identity is the provider's sub, not the email.
-    return this.prisma.user.findUnique({
-      where: { provider_providerId: { provider, providerId } },
-    });
+  ): Promise<UserDocument | null> {
+    return this.users.findByProviderId(provider, providerId);
   }
 
   /**
    * Create a user. Uniqueness of `email` is enforced by the database constraint, not a
    * pre-check here: the constraint is the only atomic guarantee, and a duplicate surfaces as
-   * P2002 which the global AllExceptionsFilter maps to 409. A findByEmail-then-create would
+   * an error which the global AllExceptionsFilter maps to 409. A findByEmail-then-create would
    * be both racy and a duplication of a rule the schema already states.
    */
-  create(data: Prisma.UserCreateInput): Promise<User> {
-    // Returns the full row, password hash included — callers wrap it in UserEntity before responding.
-    return this.prisma.user.create({ data });
+  create(data: {
+    email: string;
+    name: string;
+    password?: string;
+    provider: AuthProvider;
+    providerId?: string;
+  }): Promise<UserDocument> {
+    return this.users.createUser(data);
   }
 }

@@ -6,7 +6,7 @@ import { App } from 'supertest/types';
 import { AppModule } from './../src/app.module';
 import { GoogleService } from './../src/auth/google.service';
 import { GoogleIdentity } from './../src/auth/interfaces/auth.types';
-import { PrismaService } from './../src/prisma/prisma.service';
+import { TestDb } from './test-db';
 
 /**
  * Exercises the Google sign-in flow with only ONE thing stubbed: GoogleService.verify, the step
@@ -32,7 +32,7 @@ const fakeGoogle = {
 
 describe('Google Auth (e2e)', () => {
   let app: INestApplication<App>;
-  let prisma: PrismaService;
+  let prisma: TestDb;
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -50,7 +50,7 @@ describe('Google Auth (e2e)', () => {
         transform: true,
       }),
     );
-    prisma = app.get(PrismaService);
+    prisma = new TestDb(app);
     await app.init();
   });
 

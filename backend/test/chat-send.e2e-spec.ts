@@ -6,7 +6,7 @@ import { AddressInfo } from 'net';
 import { io, Socket } from 'socket.io-client';
 
 import { AppModule } from './../src/app.module';
-import { PrismaService } from './../src/prisma/prisma.service';
+import { TestDb } from './test-db';
 
 function connect(port: number, token?: string): Promise<Socket> {
   return new Promise((resolve, reject) => {
@@ -22,7 +22,7 @@ function connect(port: number, token?: string): Promise<Socket> {
 
 describe('Chat send (e2e)', () => {
   let app: INestApplication;
-  let prisma: PrismaService;
+  let prisma: TestDb;
   let port: number;
   let memberId: string;
   let member2Id: string;
@@ -37,7 +37,7 @@ describe('Chat send (e2e)', () => {
       imports: [AppModule],
     }).compile();
     app = mod.createNestApplication();
-    prisma = app.get(PrismaService);
+    prisma = new TestDb(app);
     await app.init();
     await app.listen(0);
     port = (app.getHttpServer().address() as AddressInfo).port;

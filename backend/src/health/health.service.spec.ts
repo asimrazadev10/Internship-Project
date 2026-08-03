@@ -1,6 +1,6 @@
+import { Connection } from 'mongoose';
 import { Queue } from 'bullmq';
 
-import { PrismaService } from '../prisma/prisma.service';
 import { DEPENDENCY_CHECK_TIMEOUT_MS } from './health.constants';
 import { HealthService } from './health.service';
 
@@ -8,11 +8,17 @@ function make(opts: {
   dbImpl?: () => Promise<unknown>;
   pingImpl?: () => Promise<unknown>;
 }) {
-  const prisma = {
-    $queryRaw: jest
-      .fn()
-      .mockImplementation(opts.dbImpl ?? (() => Promise.resolve([{ 1: 1 }]))),
-  } as unknown as PrismaService;
+  const connection = {
+    db: {
+      admin: () => ({
+        ping: jest
+          .fn()
+          .mockImplementation(
+            opts.dbImpl ?? (() => Promise.resolve({ ok: 1 })),
+          ),
+      }),
+    },
+  } as unknown as Connection;
 
   const client = {
     ping: jest
@@ -21,7 +27,7 @@ function make(opts: {
   };
   const queue = { client: Promise.resolve(client) } as unknown as Queue;
 
-  return { service: new HealthService(prisma, queue) };
+  return { service: new HealthService(connection, queue) };
 }
 
 describe('HealthService.check', () => {

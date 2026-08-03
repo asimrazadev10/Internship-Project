@@ -3,11 +3,11 @@ import { Test } from '@nestjs/testing';
 
 import { AppModule } from './../src/app.module';
 import { GroupsService } from './../src/groups/groups.service';
-import { PrismaService } from './../src/prisma/prisma.service';
+import { TestDb } from './test-db';
 
 describe('GroupsService leave/transfer (e2e)', () => {
   let app: INestApplication;
-  let prisma: PrismaService;
+  let prisma: TestDb;
   let groups: GroupsService;
   const userIds: string[] = [];
   const groupIds: string[] = [];
@@ -54,7 +54,7 @@ describe('GroupsService leave/transfer (e2e)', () => {
       imports: [AppModule],
     }).compile();
     app = mod.createNestApplication();
-    prisma = app.get(PrismaService);
+    prisma = new TestDb(app);
     groups = app.get(GroupsService);
     await app.init();
   });

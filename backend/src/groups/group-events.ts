@@ -5,7 +5,7 @@
  *
  * The groups module's half of the in-process event contract; ChatGateway is the only listener.
  */
-import { MemberRole } from '@prisma/client';
+import { MemberRole } from '../modules/groups/schemas/group-member.schema';
 
 /** Emitted after a new membership row is persisted (a user joins a group). Any transport listens. */
 export const MEMBER_JOINED = 'member.joined';
@@ -16,6 +16,9 @@ export const MEMBER_JOINED = 'member.joined';
  * cached group detail without reshaping.
  */
 export interface JoinedMember {
+  id: string;
+  groupId: string;
+  userId: string;
   role: MemberRole;
   joinedAt: Date;
   // Nullable: a member who has never opened the group has no read timestamp yet.

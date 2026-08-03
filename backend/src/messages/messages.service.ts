@@ -15,18 +15,20 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { MessageType } from '@prisma/client';
+import { Types } from 'mongoose';
+import { MessageType } from '../modules/messages/schemas/message.schema';
 
 import { PaginationMeta } from '../common/http/api-response';
-import { decodeCursor, encodeCursor } from '../common/utils/cursor';
-import { PrismaService } from '../prisma/prisma.service';
+import { decodeCursor } from '../common/utils/cursor';
+import { MessageRepository } from '../common/database/repositories/message.repository';
 import { SEARCH_RESULT_LIMIT } from './message.constants';
-import { MESSAGE_SELECT } from './message.select';
 import {
   MESSAGE_CREATED,
   MESSAGE_UPDATED,
   MessageCreatedPayload,
   MessageUpdatedPayload,
+  BroadcastMessage,
+  PopulatedMessage,
 } from './message-events';
 
 /**
@@ -41,15 +43,14 @@ import {
 @Injectable()
 export class MessagesService {
   constructor(
-    private readonly prisma: PrismaService,
+    private readonly messages: MessageRepository,
     private readonly events: EventEmitter2,
   ) {}
 
   async create(groupId: string, senderId: string, content: string) {
-    // Step 1. Called by both the REST POST and ChatGateway.sendMessage.
     return this.persistAndEmit({
-      groupId,
-      senderId,
+      groupId: new Types.ObjectId(groupId),
+      senderId: new Types.ObjectId(senderId),
       content,
       type: MessageType.USER,
     });
@@ -66,10 +67,9 @@ export class MessagesService {
     content: string,
     attachment: { url: string; name: string; mime: string },
   ) {
-    // Same emit path as a plain message, so attachments need no special client handling.
     return this.persistAndEmit({
-      groupId,
-      senderId,
+      groupId: new Types.ObjectId(groupId),
+      senderId: new Types.ObjectId(senderId),
       content,
       type: MessageType.USER,
       attachmentUrl: attachment.url,
@@ -85,43 +85,35 @@ export class MessagesService {
     userId: string,
     content: string,
   ) {
-    // Step 2. Ownership and type are checked before anything is written.
     const existing = await this.assertOwnUserMessage(
       groupId,
       messageId,
       userId,
     );
-    // Editing a tombstone would resurrect text the user deliberately removed.
     if (existing.deletedAt) {
       throw new ForbiddenException('This message has been deleted');
     }
-    // editedAt is stamped so the UI can show an "edited" marker.
-    const message = await this.prisma.message.update({
-      where: { id: messageId },
-      data: { content, editedAt: new Date() },
-      select: MESSAGE_SELECT,
-    });
-    // MESSAGE_UPDATED, not MESSAGE_CREATED, so clients replace rather than append.
+    const message = await this.messages.updateMessage(
+      new Types.ObjectId(messageId),
+      content,
+    );
     this.events.emit(MESSAGE_UPDATED, {
-      message,
+      message: this.toBroadcastMessage(message),
     } satisfies MessageUpdatedPayload);
-    return message;
+    // Plain broadcast shape, never the live document (see persistAndEmit).
+    return this.toBroadcastMessage(message);
   }
 
   /** Soft-delete your own USER message: tombstone it (blank the text) and broadcast the update. */
   async softDelete(groupId: string, messageId: string, userId: string) {
     await this.assertOwnUserMessage(groupId, messageId, userId);
-    // The row survives so reactions and reply threads keep their referent; only the text goes.
-    const message = await this.prisma.message.update({
-      where: { id: messageId },
-      data: { deletedAt: new Date(), content: '' },
-      select: MESSAGE_SELECT,
-    });
-    // The same event as an edit — to a client, a deletion is just another replacement.
+    const message = await this.messages.softDeleteMessage(
+      new Types.ObjectId(messageId),
+    );
     this.events.emit(MESSAGE_UPDATED, {
-      message,
+      message: this.toBroadcastMessage(message),
     } satisfies MessageUpdatedPayload);
-    return message;
+    return this.toBroadcastMessage(message);
   }
 
   /** The message must exist in this group AND be a USER message the caller sent. */
@@ -130,14 +122,16 @@ export class MessagesService {
     messageId: string,
     userId: string,
   ) {
-    // Step 3. Both ids in the WHERE, so a message from another group reads as not found.
-    const existing = await this.prisma.message.findFirst({
-      where: { id: messageId, groupId },
-      select: { senderId: true, type: true, deletedAt: true },
-    });
+    const existing = await this.messages.assertOwnUserMessage(
+      new Types.ObjectId(groupId),
+      new Types.ObjectId(messageId),
+      new Types.ObjectId(userId),
+    );
     if (!existing) throw new NotFoundException('Message not found');
-    // The type check is what stops anyone editing a SYSTEM or AI_SUMMARY message.
-    if (existing.senderId !== userId || existing.type !== MessageType.USER) {
+    if (
+      !existing.senderId?.equals(new Types.ObjectId(userId)) ||
+      existing.type !== MessageType.USER
+    ) {
       throw new ForbiddenException('You can only change your own messages');
     }
     return existing;
@@ -145,25 +139,21 @@ export class MessagesService {
 
   /** Single write+emit point so USER and AI_SUMMARY messages both broadcast identically. */
   private async persistAndEmit(data: {
-    groupId: string;
-    // Nullable to allow system-authored rows through the same path.
-    senderId: string | null;
+    groupId: Types.ObjectId;
+    senderId: Types.ObjectId | null;
     content: string;
     type: MessageType;
     attachmentUrl?: string;
     attachmentName?: string;
     attachmentMime?: string;
   }) {
-    // Step 4. MESSAGE_SELECT means the emitted payload is already in broadcast shape.
-    const message = await this.prisma.message.create({
-      data,
-      select: MESSAGE_SELECT,
-    });
-    // Persist-then-broadcast: the row exists before anyone is told about it.
+    const message = await this.messages.createMessage(data);
+    // Populate sender for broadcast, then return the plain broadcast shape.
+    const populated = await this.messages.findById(message._id);
     this.events.emit(MESSAGE_CREATED, {
-      message,
+      message: this.toBroadcastMessage(populated),
     } satisfies MessageCreatedPayload);
-    return message;
+    return this.toBroadcastMessage(populated);
   }
 
   /**
@@ -172,27 +162,16 @@ export class MessagesService {
    * full-text (tsvector + GIN) index would be the next step for large histories.
    */
   search(groupId: string, q: string) {
-    return this.prisma.message.findMany({
-      where: {
-        groupId,
-        type: MessageType.USER,
-        deletedAt: null,
-        // `contains` compiles to ILIKE %q% — no index can serve it, hence the hard cap below.
-        content: { contains: q, mode: 'insensitive' },
-      },
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      // Step 5. The only thing between a one-character query and a whole group's history.
-      take: SEARCH_RESULT_LIMIT,
-      select: MESSAGE_SELECT,
-    });
+    return this.messages
+      .search(new Types.ObjectId(groupId), q, SEARCH_RESULT_LIMIT)
+      .then((rows) => rows.map((r) => this.toBroadcastMessage(r)));
   }
 
   /**
    * Cursor-paginated history, newest first.
    *
    * The keyset predicate is the row-value comparison (createdAt, id) < (cursor.createdAt,
-   * cursor.id), written as the equivalent OR form because Prisma has no tuple-comparison
-   * operator. It resolves entirely within @@index([groupId, createdAt, id]):
+   * cursor.id), written as the equivalent OR form. It resolves entirely within the compound index:
    *   - createdAt strictly older, OR
    *   - same createdAt but a smaller id (the tiebreaker for messages in the same millisecond).
    *
@@ -207,40 +186,52 @@ export class MessagesService {
     limit: number,
     cursor?: string,
   ): Promise<{ data: unknown[]; meta: PaginationMeta }> {
-    // Step 6. An absent cursor means the first page; the spread below then adds no predicate.
     const decoded = cursor ? decodeCursor(cursor) : null;
 
-    const rows = await this.prisma.message.findMany({
-      where: {
-        groupId,
-        ...(decoded
-          ? {
-              // The two-branch OR is the tuple comparison Prisma cannot express directly.
-              OR: [
-                { createdAt: { lt: decoded.createdAt } },
-                { createdAt: decoded.createdAt, id: { lt: decoded.id } },
-              ],
-            }
-          : {}),
-      },
-      // Must mirror the cursor's field order, or the keyset predicate stops being sound.
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      // The +1 row is the has-more probe, and is sliced off before returning.
-      take: limit + 1,
-      select: MESSAGE_SELECT,
-    });
+    const result = await this.messages.findPage(
+      new Types.ObjectId(groupId),
+      limit,
+      decoded
+        ? {
+            createdAt: decoded.createdAt,
+            id: new Types.ObjectId(decoded.id),
+          }
+        : undefined,
+    );
 
-    const hasMore = rows.length > limit;
-    const page = hasMore ? rows.slice(0, limit) : rows;
-    // The last row of the page becomes the next cursor's position.
-    const last = page.at(-1);
+    return {
+      // Map live documents to plain broadcast shapes for the serializer.
+      data: result.data.map((r) => this.toBroadcastMessage(r)),
+      meta: result.meta,
+    };
+  }
 
-    // null rather than a cursor when the history is exhausted, so the client knows to stop.
-    const nextCursor =
-      hasMore && last
-        ? encodeCursor({ createdAt: last.createdAt, id: last.id })
-        : null;
-
-    return { data: page, meta: { limit, nextCursor, hasMore } };
+  private toBroadcastMessage(
+    message: PopulatedMessage | null,
+  ): BroadcastMessage {
+    if (!message) {
+      throw new Error('Message not found');
+    }
+    return {
+      id: message._id.toString(),
+      groupId: message.groupId.toString(),
+      content: message.content,
+      type: message.type,
+      createdAt: message.createdAt,
+      editedAt: message.editedAt ?? null,
+      deletedAt: message.deletedAt ?? null,
+      senderId: message.senderId?.toString() ?? null,
+      sender: message.sender
+        ? { id: message.sender._id.toString(), name: message.sender.name }
+        : null,
+      reactions:
+        message.reactions?.map((r) => ({
+          emoji: r.emoji,
+          userId: r.userId.toString(),
+        })) ?? [],
+      attachmentUrl: message.attachmentUrl ?? null,
+      attachmentName: message.attachmentName ?? null,
+      attachmentMime: message.attachmentMime ?? null,
+    };
   }
 }

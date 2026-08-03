@@ -1,3 +1,5 @@
+import { Types } from 'mongoose';
+import { MessageType } from '../../modules/messages/schemas/message.schema';
 import { SummaryProcessor } from './summary.processor';
 import {
   JOB_FETCH,
@@ -14,7 +16,21 @@ function make() {
       .mockResolvedValue([
         { sender: { name: 'Ada' }, content: 'ship it', createdAt: new Date() },
       ]),
-    persistAiSummary: jest.fn().mockResolvedValue({ id: 'm1', groupId: 'g1' }),
+    persistAiSummary: jest.fn().mockResolvedValue({
+      _id: new Types.ObjectId('507f1f77bcf86cd799439011'),
+      groupId: new Types.ObjectId('507f1f77bcf86cd799439012'),
+      content: 'digest',
+      type: MessageType.AI_SUMMARY,
+      createdAt: new Date('2026-07-24T00:00:00.000Z'),
+      editedAt: null,
+      deletedAt: null,
+      senderId: null,
+      sender: null,
+      reactions: [],
+      attachmentUrl: null,
+      attachmentName: null,
+      attachmentMime: null,
+    }),
   };
   const processor = new SummaryProcessor(messages as never);
   return { processor, messages };
@@ -76,7 +92,21 @@ describe('SummaryProcessor · save-summary', () => {
     expect(messages.persistAiSummary).toHaveBeenCalledWith('g1', 'digest');
     expect(res).toEqual({
       skipped: false,
-      message: { id: 'm1', groupId: 'g1' },
+      message: {
+        id: '507f1f77bcf86cd799439011',
+        groupId: '507f1f77bcf86cd799439012',
+        content: 'digest',
+        type: MessageType.AI_SUMMARY,
+        createdAt: new Date('2026-07-24T00:00:00.000Z'),
+        editedAt: null,
+        deletedAt: null,
+        senderId: null,
+        sender: null,
+        reactions: [],
+        attachmentUrl: null,
+        attachmentName: null,
+        attachmentMime: null,
+      },
     });
   });
 

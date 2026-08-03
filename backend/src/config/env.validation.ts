@@ -11,6 +11,7 @@
  */
 import { plainToInstance, Type } from 'class-transformer';
 import {
+  IsBoolean,
   IsEnum,
   IsInt,
   IsNotEmpty,
@@ -61,12 +62,37 @@ export class EnvironmentVariables {
   @Max(65535)
   PORT = 3000;
 
+  // Feature flag — whether the four BullMQ worker processes should be launched by the dev runner.
+  // Defaults to true. Parsed manually in convert() (NOT via @Type) because class-transformer maps
+  // ANY non-empty string to true — the classic Boolean()("false") === true trap — so a literal
+  // "false" here must stay false.
+  @IsBoolean({ message: 'IS_WORKER_ENABLED must be "true" or "false"' })
+  IS_WORKER_ENABLED: boolean = true;
+
+  // ---- Per-service feature flags ----
+  // A master switch is not enough to run a reduced stack (e.g. "no AI worker but keep the other
+  // three"). Each SERVICE_*_ENABLED flag turns that one worker on/off; IS_WORKER_ENABLED above is
+  // still the master — master off wins over every per-worker flag. Consumed by the dev runner
+  // (dev.ps1) but validated here so a typo fails at boot rather than silently skipping a worker.
+  @IsBoolean({ message: 'SERVICE_SCHEDULER_ENABLED must be "true" or "false"' })
+  SERVICE_SCHEDULER_ENABLED: boolean = true;
+
+  @IsBoolean({ message: 'SERVICE_AI_ENABLED must be "true" or "false"' })
+  SERVICE_AI_ENABLED: boolean = true;
+
+  @IsBoolean({ message: 'SERVICE_SUMMARY_ENABLED must be "true" or "false"' })
+  SERVICE_SUMMARY_ENABLED: boolean = true;
+
+  @IsBoolean({
+    message: 'SERVICE_NOTIFICATION_ENABLED must be "true" or "false"',
+  })
+  SERVICE_NOTIFICATION_ENABLED: boolean = true;
+
   // ---- Database ----
-  // No default and no format check: Prisma parses the URL and reports a better error than a
-  // regex here would.
+  // MongoDB connection string. No default — must be provided via MONGODB_URI.
   @IsString()
-  @IsNotEmpty({ message: 'DATABASE_URL is required' })
-  DATABASE_URL!: string;
+  @IsNotEmpty({ message: 'MONGODB_URI is required' })
+  MONGODB_URI!: string;
 
   // ---- JWT ----
 
@@ -246,12 +272,48 @@ export class EnvironmentVariables {
   SUPABASE_BUCKET: string = 'chat-uploads';
 }
 
+/**
+ * Parse a boolean env var strictly — only the literals "true"/"false" survive. Anything else
+ * (including "1", "yes" or a missing value) is an error, so a typo cannot silently flip a flag.
+ */
+function parseBoolean(key: string, value: unknown): boolean {
+  switch (value) {
+    case undefined:
+    case '':
+      // Use the class default (true) rather than erroring — matches how PORT/SUMMARY_* default.
+      return true;
+    case 'true':
+      return true;
+    case 'false':
+      return false;
+    default:
+      throw new Error(
+        `Invalid value for ${key}: "${String(value)}" — expected "true" or "false".`,
+      );
+  }
+}
+
+const BOOLEAN_KEYS = [
+  'IS_WORKER_ENABLED',
+  'SERVICE_SCHEDULER_ENABLED',
+  'SERVICE_AI_ENABLED',
+  'SERVICE_SUMMARY_ENABLED',
+  'SERVICE_NOTIFICATION_ENABLED',
+] as const;
+
 export function validateEnv(
   raw: Record<string, unknown>,
 ): EnvironmentVariables {
   // plainToInstance copies every key, so unrelated environment variables survive into
   // ConfigService. Only the declared properties are validated.
-  const config = plainToInstance(EnvironmentVariables, raw);
+  const config = plainToInstance(EnvironmentVariables, {
+    ...raw,
+    // @Type(() => Boolean) would turn "false" into true; do it by hand instead so every flag is
+    // both correctly typed and truthfully valued.
+    ...Object.fromEntries(
+      BOOLEAN_KEYS.map((k) => [k, parseBoolean(k, raw[k])]),
+    ),
+  });
 
   // Step 4. Synchronous, because ConfigModule.forRoot's `validate` hook cannot await.
   // skipMissingProperties: false is what makes an absent required variable an error.

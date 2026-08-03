@@ -4,7 +4,7 @@ import request from 'supertest';
 import { App } from 'supertest/types';
 
 import { AppModule } from './../src/app.module';
-import { PrismaService } from './../src/prisma/prisma.service';
+import { TestDb } from './test-db';
 
 /**
  * Groups + messages: the membership authorization boundary and cursor pagination.
@@ -15,7 +15,7 @@ import { PrismaService } from './../src/prisma/prisma.service';
  */
 describe('Groups & Messages (e2e)', () => {
   let app: INestApplication<App>;
-  let prisma: PrismaService;
+  let prisma: TestDb;
 
   const stamp = Date.now();
   const owner = {
@@ -48,7 +48,7 @@ describe('Groups & Messages (e2e)', () => {
         transform: true,
       }),
     );
-    prisma = app.get(PrismaService);
+    prisma = new TestDb(app);
     await app.init();
 
     ownerToken = (

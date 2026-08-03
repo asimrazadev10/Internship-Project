@@ -5,11 +5,11 @@ import { Test } from '@nestjs/testing';
 import request from 'supertest';
 
 import { AppModule } from './../src/app.module';
-import { PrismaService } from './../src/prisma/prisma.service';
+import { TestDb } from './test-db';
 
 describe('Message search (e2e)', () => {
   let app: INestApplication;
-  let prisma: PrismaService;
+  let prisma: TestDb;
   let memberId: string;
   let outsiderId: string;
   let groupId: string;
@@ -23,7 +23,7 @@ describe('Message search (e2e)', () => {
       imports: [AppModule],
     }).compile();
     app = mod.createNestApplication();
-    prisma = app.get(PrismaService);
+    prisma = new TestDb(app);
     await app.init();
 
     const stamp = Date.now();

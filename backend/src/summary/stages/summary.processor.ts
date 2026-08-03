@@ -16,6 +16,10 @@ import { Job } from 'bullmq';
 import { TRANSCRIPT_UNKNOWN_SENDER } from '../../ai/ai.constants';
 import { SummaryMessagesService } from '../../messages/summary-messages.service';
 import {
+  BroadcastMessage,
+  PopulatedMessage,
+} from '../../messages/message-events';
+import {
   SUMMARY_QUEUE,
   JOB_FETCH,
   JOB_SAVE,
@@ -86,7 +90,7 @@ export class SummaryProcessor extends WorkerHost {
     if (rows.length === 0) return { skipped: true, reason: 'empty' };
 
     // Step 3d. Reduce to the two fields the model needs; no row shapes cross to the ai-worker.
-    const transcript = rows.map((r) => ({
+    const transcript = rows.map((r: PopulatedMessage) => ({
       // A deleted author leaves sender null (onDelete: SetNull), so fall back to a shared constant.
       sender: r.sender?.name ?? TRANSCRIPT_UNKNOWN_SENDER,
       content: r.content,
@@ -109,12 +113,12 @@ export class SummaryProcessor extends WorkerHost {
       child.groupId,
       child.summaryText,
     );
-    // Logs the new row id, the handle for finding the summary in Postgres.
+    // Logs the new row id, the handle for finding the summary in MongoDB.
     this.logger.log(
       `group ${child.groupId}: summary persisted (${message.id})`,
     );
     // Returned in full so publish can broadcast without re-reading the database.
-    return { skipped: false, message };
+    return { skipped: false, message: this.toBroadcastMessage(message) };
   }
 
   /** group-summary (root): completes once publish — and thus the whole chain — is done. */
@@ -125,5 +129,25 @@ export class SummaryProcessor extends WorkerHost {
     const child = firstChildValue<PublishResult>(await job.getChildrenValues());
     // `?? false` covers a skipped chain, where publish returned published:false.
     return { done: true, published: child?.published ?? false };
+  }
+
+  private toBroadcastMessage(message: PopulatedMessage): BroadcastMessage {
+    return {
+      id: message._id.toString(),
+      groupId: message.groupId.toString(),
+      content: message.content,
+      type: message.type,
+      createdAt: message.createdAt,
+      editedAt: message.editedAt ?? null,
+      deletedAt: message.deletedAt ?? null,
+      senderId: message.senderId?.toString() ?? null,
+      sender: message.sender
+        ? { id: message.sender._id.toString(), name: message.sender.name }
+        : null,
+      reactions: [],
+      attachmentUrl: message.attachmentUrl ?? null,
+      attachmentName: message.attachmentName ?? null,
+      attachmentMime: message.attachmentMime ?? null,
+    };
   }
 }

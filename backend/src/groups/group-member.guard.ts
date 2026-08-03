@@ -13,14 +13,14 @@ import {
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
-import { GroupMember } from '@prisma/client';
 import { Request } from 'express';
+import { GroupMemberDocument } from '../modules/groups/schemas/group-member.schema';
 
 import { AuthUser } from '../common/decorators/current-user.decorator';
 import { GroupsService } from './groups.service';
 
 /**
- * Enforces CLAUDE.md's rule that a user may only read or post in a group they belong to —
+ * Enforces the rule that a user may only read or post in a group they belong to —
  * "with a Guard, not ad-hoc checks". Centralising it here means the rule is written once and
  * cannot be forgotten on a new group-scoped endpoint.
  *
@@ -43,30 +43,24 @@ export class GroupMemberGuard implements CanActivate {
   constructor(private readonly groups: GroupsService) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    // Typed params: every route this guard protects is nested under :id (the group id), so the
-    // generic states that rather than letting it widen to string | string[].
     const request = context.switchToHttp().getRequest<
       Request<{ id: string }> & {
         user?: AuthUser;
-        groupMembership?: GroupMember;
+        groupMembership?: GroupMemberDocument;
       }
     >();
 
     const user = request.user;
-    // Step 2. Defensive — the global JwtAuthGuard should have populated this already.
     if (!user) {
       throw new UnauthorizedException();
     }
 
-    // Throws ForbiddenException on a malformed id or a non-membership; returns the row otherwise.
     const membership = await this.groups.assertMember(
       user.userId,
       request.params.id,
     );
 
-    // Surface the loaded membership so handlers needing the caller's role don't re-query.
     request.groupMembership = membership;
-    // Step 4. `true` lets the request through; every rejection above was a thrown exception.
     return true;
   }
 }

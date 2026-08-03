@@ -15,7 +15,6 @@ import {
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
-import { AuthProvider, User } from '@prisma/client';
 
 import { UserEntity } from '../users/user.entity';
 import { UsersService } from '../users/users.service';
@@ -25,6 +24,10 @@ import { RegisterDto } from './dto/register.dto';
 import { AuthResult, GoogleIdentity } from './interfaces/auth.types';
 import { PasswordService } from './password.service';
 import { TokenService } from './token.service';
+import {
+  AuthProvider,
+  UserDocument,
+} from '../modules/users/schemas/user.schema';
 
 /**
  * Orchestrates the local auth flows. Holds no cryptography or persistence of its own — it
@@ -45,7 +48,7 @@ export class AuthService {
     // Step 1. Hash before the insert, so the plaintext never reaches the persistence layer.
     const passwordHash = await this.passwords.hash(dto.password);
 
-    // Uniqueness of email is enforced by the DB constraint; a duplicate surfaces as P2002 and
+    // Uniqueness of email is enforced by the DB constraint; a duplicate surfaces as an error and
     // is mapped to 409 by the global filter. No pre-check — it would be racy and redundant.
     const user = await this.users.create({
       email: dto.email,
@@ -54,8 +57,10 @@ export class AuthService {
       provider: AuthProvider.LOCAL,
     });
 
-    const tokens = await this.tokens.issueForNewSession(user);
-    // Wrapped in UserEntity so @Exclude() strips the hash on the way out.
+    const tokens = await this.tokens.issueForNewSession({
+      id: user._id.toString(),
+      email: user.email,
+    });
     return { user: new UserEntity(user), ...tokens };
   }
 
@@ -81,7 +86,10 @@ export class AuthService {
       throw new UnauthorizedException('Invalid email or password');
     }
 
-    const tokens = await this.tokens.issueForNewSession(user);
+    const tokens = await this.tokens.issueForNewSession({
+      id: user._id.toString(),
+      email: user.email,
+    });
     return { user: new UserEntity(user), ...tokens };
   }
 
@@ -101,11 +109,16 @@ export class AuthService {
     const user = await this.resolveGoogleUser(identity);
 
     // From here the flow is identical to a password login — same tokens, same lifetimes.
-    const tokens = await this.tokens.issueForNewSession(user);
+    const tokens = await this.tokens.issueForNewSession({
+      id: user._id.toString(),
+      email: user.email,
+    });
     return { user: new UserEntity(user), ...tokens };
   }
 
-  private async resolveGoogleUser(identity: GoogleIdentity): Promise<User> {
+  private async resolveGoogleUser(
+    identity: GoogleIdentity,
+  ): Promise<UserDocument> {
     // A returning Google user is recognised by the provider subject id, not by email — the sub
     // is stable while an email can change.
     const existing = await this.users.findByProviderId(
