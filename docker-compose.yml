@@ -13,6 +13,11 @@ services:
     image: mongo:7
     container_name: chat-mongodb
     restart: unless-stopped
+    # Single-node REPLICA SET, not standalone. GroupsService wraps group + membership creation in
+    # a MongoSessionService.withTransaction, and transactions are only supported on a replica set
+    # member — on a standalone this fails with "Transaction numbers are only allowed on a replica
+    # set member or mongos". rs0 = the set name; there is one member, this container.
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
     environment:
       MONGO_INITDB_DATABASE: ${MONGODB_DB:-chatdb}
     ports:
@@ -20,11 +25,18 @@ services:
     volumes:
       - mongodb-data:/data/db
     healthcheck:
-      # Mongo is ready when mongosh can run a simple ping
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      # Ready = a member can be reached AND the set is initiated (rs.initiate runs once; it
+      # throws until the set is configured, after which rs.status() succeeds). This also makes
+      # docker compose wait for the primary election before reporting healthy.
+      test:
+        [
+          "CMD-SHELL",
+          "mongosh --quiet --eval 'try { rs.status() } catch (e) { rs.initiate({ _id: \"rs0\", members: [{ _id: 0, host: \"localhost:27017\" }] }) }' > /dev/null && mongosh --quiet --eval 'quit(rs.status().ok ? 0 : 1)'",
+        ]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 10s
 
   redis:
     image: redis:7-alpine

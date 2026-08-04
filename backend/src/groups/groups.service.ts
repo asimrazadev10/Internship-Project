@@ -73,13 +73,17 @@ export class GroupsService {
         tx,
       );
 
-      // Plain snapshot, not the live document: the global ClassSerializerInterceptor walks any
-      // object it is handed, and a Mongoose Document breaks it.
-      const groupPlain = group.toObject({ virtuals: true }) as Record<
-        string,
-        unknown
-      >;
-      return groupPlain;
+      // Plain shape, not the live document: the global ClassSerializerInterceptor walks any
+      // object it is handed, and a Mongoose Document breaks it. `id`/`createdBy` are strings so
+      // the ObjectId never reaches the serializer as a `{buffer: ...}` literal.
+      return {
+        id: group._id.toString(),
+        name: group.name,
+        createdBy: group.createdBy.toString(),
+        createdAt: group.createdAt,
+        members: [],
+        messages: [],
+      };
     });
   }
 
@@ -107,7 +111,8 @@ export class GroupsService {
 
     // Compose the detail from a plain group snapshot plus its member rows (from the groupmembers
     // collection - the stored `Group.members` array is never maintained). Members are plain
-    // objects so the ClassSerializerInterceptor never sees a Mongoose document.
+    // objects so the ClassSerializerInterceptor never sees a Mongoose document. ids are strings
+    // so the ObjectId never reaches the serializer as a `{buffer: ...}` literal.
     interface PlainGroupMember {
       _id: Types.ObjectId;
       groupId: Types.ObjectId;
@@ -117,12 +122,8 @@ export class GroupsService {
       lastReadAt: Date | null;
       user?: { _id: Types.ObjectId; name: string; email: string } | null;
     }
-    const groupPlain = group.toObject({ virtuals: true }) as Record<
-      string,
-      unknown
-    >;
     const rows = await this.members.findMembersByGroup(groupObjectId);
-    groupPlain.members = rows.map((row: GroupMemberDocument) => {
+    const members = rows.map((row: GroupMemberDocument) => {
       const m = row.toObject({ virtuals: true }) as PlainGroupMember;
       const memberUser = m.user ?? null;
       return {
@@ -142,7 +143,13 @@ export class GroupsService {
       };
     });
 
-    return groupPlain;
+    return {
+      id: group._id.toString(),
+      name: group.name,
+      createdBy: group.createdBy.toString(),
+      createdAt: group.createdAt,
+      members,
+    };
   }
 
   /**
@@ -197,7 +204,12 @@ export class GroupsService {
       throw error;
     }
 
-    return group.toObject({ virtuals: true }) as Record<string, unknown>;
+    return {
+      id: group._id.toString(),
+      name: group.name,
+      createdBy: group.createdBy.toString(),
+      createdAt: group.createdAt,
+    };
   }
 
   /**

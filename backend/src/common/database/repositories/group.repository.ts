@@ -21,7 +21,7 @@ export class GroupRepository extends BaseRepository<GroupDocument> {
     userId: Types.ObjectId,
     session?: ClientSession,
   ): Promise<any[]> {
-    return this.model
+    const rows = await this.model
       .aggregate([
         {
           $lookup: {
@@ -58,6 +58,20 @@ export class GroupRepository extends BaseRepository<GroupDocument> {
       ])
       .session(session ?? null)
       .exec();
+
+    // The UI expects a `id`/`_count` shape (see frontend GroupSummary), but an aggregation
+    // returns raw BSON docs where `_id` stays an ObjectId that the ClassSerializerInterceptor
+    // flattens into its own properties. Map each row to the plain shape the client consumes.
+    return rows.map((row: Record<string, unknown>) => ({
+      id: String(row._id as Types.ObjectId),
+      name: row.name as string,
+      createdBy: String(row.createdBy as Types.ObjectId),
+      createdAt: row.createdAt as Date,
+      _count: {
+        members: row.memberCount as number,
+        messages: row.messageCount as number,
+      },
+    }));
   }
 
   async findOneWithMembers(
