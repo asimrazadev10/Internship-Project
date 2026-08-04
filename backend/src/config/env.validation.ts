@@ -88,6 +88,43 @@ export class EnvironmentVariables {
   })
   SERVICE_NOTIFICATION_ENABLED: boolean = true;
 
+  // ---- Per-feature flags for the single API process ----
+  // The four flags above toggle the WORKER processes (consumed by dev.ps1). The API itself is ONE
+  // process that serves every feature's HTTP routes in the same app, so to stop one feature you
+  // cannot drop a process — you must make its routes 404. Each of these gates one feature's routes
+  // (see FeatureGateGuard). isMaster still covers workers only; these are read by the API runtime.
+  @IsBoolean({ message: 'SERVICE_AUTH_ENABLED must be "true" or "false"' })
+  SERVICE_AUTH_ENABLED: boolean = true;
+
+  @IsBoolean({ message: 'SERVICE_GROUPS_ENABLED must be "true" or "false"' })
+  SERVICE_GROUPS_ENABLED: boolean = true;
+
+  @IsBoolean({
+    message: 'SERVICE_MESSAGES_ENABLED must be "true" or "false"',
+  })
+  SERVICE_MESSAGES_ENABLED: boolean = true;
+
+  // The HTTP manual-trigger route (/summaries). Distinct from SERVICE_SUMMARY_ENABLED above, which
+  // is the summary WORKER process. Two flags, two processes/route-groups, deliberate.
+  @IsBoolean({
+    message: 'SERVICE_SUMMARIES_ENABLED must be "true" or "false"',
+  })
+  SERVICE_SUMMARIES_ENABLED: boolean = true;
+
+  @IsBoolean({ message: 'SERVICE_HEALTH_ENABLED must be "true" or "false"' })
+  SERVICE_HEALTH_ENABLED: boolean = true;
+
+  // The Socket.IO gateway. Guards never run on a WebSocket, so the gateway reads this itself.
+  @IsBoolean({ message: 'SERVICE_CHAT_ENABLED must be "true" or "false"' })
+  SERVICE_CHAT_ENABLED: boolean = true;
+
+  // The Bull Board dashboard (/admin/queues). Mounted as its own Express middleware, so the
+  // dashboard (not a route-specific guard) reads this itself.
+  @IsBoolean({
+    message: 'SERVICE_QUEUE_BOARD_ENABLED must be "true" or "false"',
+  })
+  SERVICE_QUEUE_BOARD_ENABLED: boolean = true;
+
   // ---- Database ----
   // MongoDB connection string. No default — must be provided via MONGODB_URI.
   @IsString()
@@ -312,6 +349,13 @@ const BOOLEAN_KEYS = [
   'SERVICE_AI_ENABLED',
   'SERVICE_SUMMARY_ENABLED',
   'SERVICE_NOTIFICATION_ENABLED',
+  'SERVICE_AUTH_ENABLED',
+  'SERVICE_GROUPS_ENABLED',
+  'SERVICE_MESSAGES_ENABLED',
+  'SERVICE_SUMMARIES_ENABLED',
+  'SERVICE_HEALTH_ENABLED',
+  'SERVICE_CHAT_ENABLED',
+  'SERVICE_QUEUE_BOARD_ENABLED',
 ] as const;
 
 export function validateEnv(

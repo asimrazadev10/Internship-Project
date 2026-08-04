@@ -102,6 +102,16 @@ export class ChatGateway
 
   afterInit(server: Server): void {
     // Step 1. server.use registers handshake middleware, which runs before any connection completes.
+    // When the chat feature is disabled (SERVICE_CHAT_ENABLED=false), refuse every handshake up
+    // front — the WebSocket has no HTTP request, so the global FeatureGateGuard never sees it and
+    // the gateway must gate itself.
+    if (!this.config.get<boolean>('SERVICE_CHAT_ENABLED', true)) {
+      this.logger.warn(
+        'chat is disabled by SERVICE_CHAT_ENABLED=false — refusing connections',
+      );
+      server.use((socket, next) => next(new Error('chat is disabled')));
+      return;
+    }
     server.use(createWsAuthMiddleware(this.jwt, this.config));
   }
 

@@ -81,6 +81,35 @@ describe('validateEnv — per-service flags', () => {
     expect(cfg.SERVICE_NOTIFICATION_ENABLED).toBe(true);
   });
 
+  it('defaults every per-feature flag to true', () => {
+    const cfg = validateEnv(base);
+    expect(cfg.SERVICE_AUTH_ENABLED).toBe(true);
+    expect(cfg.SERVICE_GROUPS_ENABLED).toBe(true);
+    expect(cfg.SERVICE_MESSAGES_ENABLED).toBe(true);
+    expect(cfg.SERVICE_SUMMARIES_ENABLED).toBe(true);
+    expect(cfg.SERVICE_HEALTH_ENABLED).toBe(true);
+    expect(cfg.SERVICE_CHAT_ENABLED).toBe(true);
+    expect(cfg.SERVICE_QUEUE_BOARD_ENABLED).toBe(true);
+  });
+
+  it('lets each feature be disabled independently', () => {
+    const cfg = validateEnv({
+      ...base,
+      SERVICE_MESSAGES_ENABLED: 'false',
+      SERVICE_CHAT_ENABLED: 'false',
+    });
+    expect(cfg.SERVICE_MESSAGES_ENABLED).toBe(false);
+    expect(cfg.SERVICE_CHAT_ENABLED).toBe(false);
+    expect(cfg.SERVICE_GROUPS_ENABLED).toBe(true);
+    expect(cfg.SERVICE_AUTH_ENABLED).toBe(true);
+  });
+
+  it('rejects a malformed per-feature flag', () => {
+    expect(() =>
+      validateEnv({ ...base, SERVICE_CHAT_ENABLED: 'nope' }),
+    ).toThrow(/SERVICE_CHAT_ENABLED/);
+  });
+
   it('lets each worker be disabled independently', () => {
     const cfg = validateEnv({
       ...base,

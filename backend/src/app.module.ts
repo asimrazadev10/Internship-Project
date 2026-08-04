@@ -13,7 +13,7 @@ import {
   Module,
   ValidationPipe,
 } from '@nestjs/common';
-import { APP_FILTER, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { BullModule } from '@nestjs/bullmq';
@@ -21,6 +21,7 @@ import { BullModule } from '@nestjs/bullmq';
 import { AppConfigModule } from './config/config.module';
 import { bullConnectionFactory } from './config/redis.config';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
+import { FeatureGateGuard } from './common/guards/feature-gate.guard';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
 import { AuthModule } from './auth/auth.module';
 import { ChatModule } from './chat/chat.module';
@@ -87,6 +88,9 @@ import { UsersModule } from './users/users.module';
     { provide: APP_INTERCEPTOR, useClass: ResponseInterceptor },
     // Registered second, so it runs first: @Exclude() fields go before anything is wrapped.
     { provide: APP_INTERCEPTOR, useClass: ClassSerializerInterceptor },
+    // Per-feature gate: 404s any route whose SERVICE_*_ENABLED flag is false. Both guards run for
+    // every HTTP request (JwtAuthGuard globals are declared by AuthModule) — auth first, then gate.
+    { provide: APP_GUARD, useClass: FeatureGateGuard },
     // Step 5. @Catch() with no argument, so this is the only filter needed.
     { provide: APP_FILTER, useClass: AllExceptionsFilter },
   ],

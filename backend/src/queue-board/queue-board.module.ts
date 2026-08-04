@@ -44,6 +44,19 @@ import {
     BullBoardModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => {
+        // The board is mounted as raw Express middleware, so the global FeatureGateGuard never runs
+        // for it — the dashboard reads its own flag. A disabled board is a 404, not a 401: locking
+        // the dashboard (no basic-auth users) and disabling it are different intentions.
+        const route = '/admin/queues';
+        const adapter = ExpressAdapter;
+        if (!config.get<boolean>('SERVICE_QUEUE_BOARD_ENABLED', true)) {
+          const disabled: RequestHandler = (_req, res) => {
+            res
+              .status(404)
+              .json({ statusCode: 404, message: 'Queue board is disabled' });
+          };
+          return { route, adapter, middleware: disabled };
+        }
         const user = config.getOrThrow<string>('BOARDS_USER');
         const password = config.get<string>('BOARDS_PASSWORD');
         const users = password ? { [user]: password } : {};
@@ -51,11 +64,7 @@ import {
           challenge: true,
           users,
         });
-        return {
-          route: '/admin/queues',
-          adapter: ExpressAdapter,
-          middleware,
-        };
+        return { route, adapter, middleware };
       },
     }),
     // Step 3. One board entry per queue.
