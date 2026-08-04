@@ -69,6 +69,11 @@ const nextConfig: NextConfig = {
         source: "/api/:path*",
         destination: `${backendOrigin}/:path*`,
       },
+      {
+        // Bull Board queue dashboard: same-origin at /admin/queues, forwarded to the API.
+        source: "/admin/queues/:path*",
+        destination: `${backendOrigin}/admin/queues/:path*`,
+      },
     ];
   },
 };

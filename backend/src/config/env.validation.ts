@@ -251,6 +251,19 @@ export class EnvironmentVariables {
   NOTIFICATION_WORKER_CONCURRENCY: number =
     WORKER_CONCURRENCY.NOTIFICATION.default;
 
+  // ---- Bull Board (queue dashboard) ----
+  // HTTP basic-auth user for the /admin/queues dashboard. Always required; the module uses it
+  // for the credentials object even when the password is unset (empty object = locked).
+  @IsString()
+  @IsNotEmpty({ message: 'BOARDS_USER is required' })
+  BOARDS_USER: string = 'admin';
+
+  // Optional password. Absent/unset keeps the board locked (no users configured), so a fresh
+  // clone cannot ship with a well-known secret already unlocking the queue dashboard.
+  @IsString()
+  @IsOptional()
+  BOARDS_PASSWORD?: string;
+
   // ---- Storage ----
   // Bonus (file uploads) — Supabase Storage. URL and key are optional: without them the service
   // falls back to writing under uploads/ on local disk, so uploads work with no external setup.

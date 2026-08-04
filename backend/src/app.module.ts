@@ -28,6 +28,7 @@ import { DatabaseModule } from './common/database/database.module';
 import { GroupsModule } from './groups/groups.module';
 import { HealthModule } from './health/health.module';
 import { MessagesModule } from './messages/messages.module';
+import { QueueBoardModule } from './queue-board/queue-board.module';
 import { SummaryModule } from './summary/summary.module';
 import { UsersModule } from './users/users.module';
 
@@ -61,6 +62,7 @@ import { UsersModule } from './users/users.module';
     GroupsModule,
     MessagesModule,
     ChatModule,
+    QueueBoardModule,
   ],
   providers: [
     {

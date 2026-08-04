@@ -1,32 +1,27 @@
 # Local development services for the Group Chat Application.
 #
-# Postgres  — system of record for users, groups, memberships and messages.
-# Redis     — used from Phase 3 onward: Socket.IO adapter (multi-node broadcast fan-out)
-#             and, from Phase 4, the BullMQ job store.
+# MongoDB   — system of record for users, groups, memberships and messages.
+# Redis     — Socket.IO adapter (multi-node broadcast fan-out) and BullMQ job store.
 #
 # Run from the repo root: `docker compose up -d`.
 #
-# These defaults are the project's real local values (port 55432 avoids colliding with a
-# native Postgres on 5432/5433), so the file is self-sufficient — no .env beside it is needed.
-# The backend's own config lives in backend/.env; its DATABASE_URL must use the same 55432.
+# The MongoDB port 27017 is standard; the backend's config lives in backend/.env
+# and its MONGODB_URI must use the same 27017.
 
 services:
-  postgres:
-    image: postgres:16-alpine
-    container_name: chat-postgres
+  mongodb:
+    image: mongo:7
+    container_name: chat-mongodb
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-chatuser}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-chatpass}
-      POSTGRES_DB: ${POSTGRES_DB:-chatdb}
+      MONGO_INITDB_DATABASE: ${MONGODB_DB:-chatdb}
     ports:
-      - "${POSTGRES_PORT:-55432}:5432"
+      - "${MONGODB_PORT:-27017}:27017"
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      - mongodb-data:/data/db
     healthcheck:
-      # Depended on by the API/workers so they don't start against a DB that isn't accepting
-      # connections yet — Postgres briefly listens before it is actually ready.
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-chatuser} -d ${POSTGRES_DB:-chatdb}"]
+      # Mongo is ready when mongosh can run a simple ping
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -49,5 +44,5 @@ services:
       retries: 5
 
 volumes:
-  postgres-data:
+  mongodb-data:
   redis-data:

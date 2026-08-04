@@ -4,12 +4,11 @@
 
 .DESCRIPTION
   Starts, in order:
-    1. Docker services (Postgres + Redis), then waits until both actually ACCEPT CONNECTIONS
-    2. Pending Prisma migrations
-    3. A backend build  -- the four workers run from dist/, so this must finish first
-    4. API + 4 workers + frontend, together, with colour-coded prefixed output
+    1. Docker services (MongoDB + Redis), then waits until both actually ACCEPT CONNECTIONS
+    2. A backend build  -- the four workers run from dist/, so this must finish first
+    3. API + 4 workers + frontend, together, with colour-coded prefixed output
 
-  Steps 1-3 run SEQUENTIALLY on purpose. This machine has ~8 GB RAM and a tsc build
+  Steps 1-2 run SEQUENTIALLY on purpose. This machine has ~8 GB RAM and a tsc build
   alongside a Next build is enough to make one of them fail; see -SkipBuild if you
   know dist/ is already current.
 
@@ -33,8 +32,6 @@
 param(
   # Skip the backend build. Safe when dist/ is newer than every backend/src file.
   [switch]$SkipBuild,
-  # Skip `prisma migrate deploy`. Useful when the schema is known to be applied.
-  [switch]$SkipMigrate,
   # Do not start the four BullMQ workers. Chat still works; AI summaries do not.
   [switch]$NoWorkers,
   # Run the compiled API (start:prod) instead of watch mode. Lower memory, no reload.
@@ -46,10 +43,15 @@ param(
   # while the server itself still answers, which looks like the app is broken rather than
   # the cache. Costs a cold rebuild.
   [switch]$Clean,
-  # Published Postgres port. Matches POSTGRES_PORT in docker-compose.yml.
-  [int]$PostgresPort = 55432,
+  # Published MongoDB port. Matches MONGODB_PORT in docker-compose.yml.
+  [int]$MongoPort = 27017,
   # Published Redis port.
   [int]$RedisPort = 6379,
+  # Port the API listens on. Defaults to 3000 (backend/.env PORT). Used for the
+  # worker port gate, CORS override and printed URLs, so pass it when PORT is overridden.
+  [int]$ApiPort = 3000,
+  # Port the Next.js frontend runs on. Defaults to 3001 (frontend/package.json dev).
+  [int]$WebPort = 3001,
   # Web (frontend) instances to run ALONE, with no API/Docker/workers. Each port is one Next.js
   # instance served from a single `next build` via `next start`; e.g. -WebPorts 3000..3005 runs
   # six frontends. Dev mode is not used here: Next.js forbids two dev servers in the same project.
@@ -68,7 +70,7 @@ function Write-Warn2($text)    { Write-Host "    $text"    -ForegroundColor Yell
 function Write-Fail($text)     { Write-Host "    $text"    -ForegroundColor Red }
 
 # A direct socket test. Instant, and independent of the Docker CLI -- which is the whole
-# point: a wedged `docker ps` says nothing about whether Postgres is reachable.
+# point: a wedged `docker ps` says nothing about whether MongoDB is reachable.
 function Test-TcpPort {
   param([int]$Port, [int]$TimeoutMs = 1500)
   $client = New-Object Net.Sockets.TcpClient
@@ -104,7 +106,7 @@ function Invoke-WithTimeout {
 if ($Down) {
   Write-Step 'stop' 'Stopping Docker services'
   if (Invoke-WithTimeout 'docker' @('compose', 'down') 180) {
-    Write-Ok 'Postgres and Redis stopped.'
+    Write-Ok 'MongoDB and Redis stopped.'
   } else {
     Write-Fail 'docker compose down did not finish in 180s -- the Docker CLI may be wedged.'
     Write-Warn2 'Restart Docker Desktop if this persists.'
@@ -141,7 +143,7 @@ if ($Clean) {
 # Reporting it here beats an EADDRINUSE stack trace 40 seconds into the script.
 # Abort rather than warn: step 5's wait-for-port guard passes off the OLD API otherwise.
 $blocked = @()
-foreach ($p in 3000, 3001) {
+foreach ($p in $ApiPort, $WebPort) {
   $busy = Get-NetTCPConnection -State Listen -LocalPort $p -ErrorAction SilentlyContinue
   if ($busy) {
     $ownerPid = $busy[0].OwningProcess
@@ -156,7 +158,7 @@ if ($blocked.Count -gt 0) {
   Write-Warn2 'Its parent `concurrently` will then bring the rest of that run down with it.'
   exit 1
 }
-Write-Ok 'Ports 3000 and 3001 are free.'
+Write-Ok "Ports $ApiPort and $WebPort are free."
 
 # ------------------------------------------------------ web-only farm (-WebPorts)
 if ($WebPorts.Count -gt 0) {
@@ -214,16 +216,16 @@ if ($WebPorts.Count -gt 0) {
 }
 
 # ---------------------------------------------------------------- docker
-Write-Step 2 'Postgres and Redis'
+Write-Step 2 'MongoDB and Redis'
 
-$pgUp = Test-TcpPort $PostgresPort
+$mongoUp = Test-TcpPort $MongoPort
 $redisUp = Test-TcpPort $RedisPort
 
-if ($pgUp -and $redisUp) {
+if ($mongoUp -and $redisUp) {
   # Fast path. Nothing to start, and no reason to touch the Docker CLI at all.
-  Write-Ok "Already reachable (Postgres $PostgresPort, Redis $RedisPort)."
+  Write-Ok "Already reachable (MongoDB $MongoPort, Redis $RedisPort)."
 } else {
-  Write-Host "    Starting containers (Postgres up: $pgUp, Redis up: $redisUp)..." -ForegroundColor Gray
+  Write-Host "    Starting containers (MongoDB up: $mongoUp, Redis up: $redisUp)..." -ForegroundColor Gray
   # Bounded, because `docker compose` inherits whatever state the CLI is in.
   if (-not (Invoke-WithTimeout 'docker' @('compose', 'up', '-d') 240)) {
     Write-Fail 'docker compose up -d failed or timed out after 240s.'
@@ -231,33 +233,18 @@ if ($pgUp -and $redisUp) {
     exit 1
   }
 
-  # Poll the sockets, not the healthcheck: Postgres briefly listens before it is ready, and
+  # Poll the sockets, not the healthcheck: MongoDB briefly listens before it is ready, and
   # `docker inspect` is exactly the call that stalls when the CLI is unwell.
   $deadline = (Get-Date).AddSeconds(90)
   while ($true) {
-    if ((Test-TcpPort $PostgresPort) -and (Test-TcpPort $RedisPort)) { break }
+    if ((Test-TcpPort $MongoPort) -and (Test-TcpPort $RedisPort)) { break }
     if ((Get-Date) -gt $deadline) {
-      Write-Fail 'Postgres/Redis did not start accepting connections within 90s.'
+      Write-Fail 'MongoDB/Redis did not start accepting connections within 90s.'
       exit 1
     }
     Start-Sleep -Seconds 2
   }
-  Write-Ok "Reachable (Postgres $PostgresPort, Redis $RedisPort)."
-}
-
-# ------------------------------------------------------------- migrations
-if (-not $SkipMigrate) {
-  Write-Step 3 'Applying database migrations'
-  Push-Location backend
-  try {
-    # `migrate deploy`, not `migrate dev`: deploy only applies pending migrations and
-    # never prompts or offers to reset the database, which is what you want unattended.
-    npx prisma migrate deploy
-    if ($LASTEXITCODE -ne 0) { throw 'prisma migrate deploy failed' }
-  } finally { Pop-Location }
-  Write-Ok 'Schema up to date.'
-} else {
-  Write-Step 3 'Skipping migrations (-SkipMigrate)'
+  Write-Ok "Reachable (MongoDB $MongoPort, Redis $RedisPort)."
 }
 
 # ------------------------------------------------------------------ build
@@ -267,22 +254,22 @@ if (-not $SkipMigrate) {
 # deleteOutDir: true), so a build done now is thrown away seconds later. The workers are held
 # back until the API is listening instead; see step 5.
 if ($Prod -and -not $SkipBuild) {
-  Write-Step 4 'Building backend (-Prod runs from dist/)'
+  Write-Step 3 'Building backend (-Prod runs from dist/)'
   Write-Warn2 'Runs alone -- a parallel build is what OOMs this machine.'
   npm --prefix backend run build
   if ($LASTEXITCODE -ne 0) { Write-Fail 'Build failed.'; exit 1 }
   Write-Ok 'dist/ is current.'
 } elseif ($Prod) {
-  Write-Step 4 'Skipping build (-SkipBuild)'
+  Write-Step 3 'Skipping build (-SkipBuild)'
   if (-not (Test-Path 'backend/dist/main.js')) {
     Write-Warn2 'backend/dist/main.js is missing -- start:prod will fail.'
   }
 } else {
-  Write-Step 4 'No separate build needed (watch mode compiles dist/ itself)'
+  Write-Step 3 'No separate build needed (watch mode compiles dist/ itself)'
 }
 
 # ------------------------------------------------------------------ serve
-Write-Step 5 'Starting API, workers and frontend'
+Write-Step 4 'Starting API, workers and frontend'
 
 $apiScript = if ($Prod) { 'start:prod' } else { 'start:dev' }
 
@@ -332,12 +319,25 @@ if ($runWorkers -and -not $apiEnabled -and -not (Test-Path 'backend/dist/main.js
   npm --prefix backend run build
   if ($LASTEXITCODE -ne 0) { Write-Fail 'Backend build failed.'; exit 1 }
 }
-$workerGate = if ($apiEnabled) { 'node scripts/wait-for-port.js 3000 180 && ' } else { '' }
+$workerGate = if ($apiEnabled) { "node scripts/wait-for-port.js $ApiPort 180 && " } else { '' }
 
 # Colors: api=cyan, web=green, plus the per-worker colour in $workerTable.
+# The ports live in backend/.env (PORT) and frontend/.env.local (BACKEND_ORIGIN) plus the
+# frontend's package.json dev script (-p). Overriding them in THIS process lets one script run
+# the whole stack on any free port pair without touching either env file: every child spawned
+# by concurrently inherits them. SOCKET_CORS_ORIGIN must match the web port or Socket.IO will
+# reject browser connections from it.
+#
+# These are set on $env BEFORE concurrently starts, never via `set` in a command string:
+# cmd.exe's `set X=value && ...` appends the pre-`&&` space to the value, and concurrently's
+# shell parsing strips the surrounding quotes that would otherwise prevent that — so a port
+# override set inline always arrives with a trailing space and breaks URL joining.
+if ($apiEnabled) { $env:PORT = "$ApiPort"; $env:SOCKET_CORS_ORIGIN = "http://localhost:$WebPort" }
+if ($webEnabled) { $env:BACKEND_ORIGIN = "http://localhost:$ApiPort"; $env:NEXT_PUBLIC_SOCKET_URL = "http://localhost:$ApiPort" }
+
 $entries = @()
 if ($apiEnabled) {
-  $entries += @{ name='api'; color='cyan';  cmd="npm --prefix backend run $apiScript" }
+  $entries += @{ name='api'; color='cyan'; cmd="npm --prefix backend run $apiScript" }
 }
 foreach ($w in $workerTable) {
   if ($workerMaster -and $svcFlags[$w.id]) {
@@ -345,7 +345,7 @@ foreach ($w in $workerTable) {
   }
 }
 if ($webEnabled) {
-  $entries += @{ name='web'; color='green'; cmd='npm --prefix frontend run dev' }
+  $entries += @{ name='web'; color='green'; cmd="npm --prefix frontend run dev:p -- -p $WebPort" }
 }
 
 if ($entries.Count -eq 0) {
@@ -358,17 +358,16 @@ $colors   = ($entries | ForEach-Object { $_.color }) -join ','
 $commands = @($entries | ForEach-Object { $_.cmd })
 
 Write-Host ''
-if ($apiEnabled) { Write-Host '  API          http://localhost:3000' -ForegroundColor Gray }
-if ($webEnabled) { Write-Host '  Frontend     http://localhost:3001' -ForegroundColor Gray }
+if ($apiEnabled) { Write-Host "  API          http://localhost:$ApiPort" -ForegroundColor Gray }
+if ($webEnabled) { Write-Host "  Frontend     http://localhost:$WebPort" -ForegroundColor Gray }
 foreach ($w in $workerTable) {
   if ($workerMaster -and $svcFlags[$w.id]) {
-    Write-Host "  $($w.label) http://localhost:$($w.port)  (worker process - no HTTP)" -ForegroundColor Gray
-  }
+    Write-Host "  $($w.label) http://localhost:$($w.port)  (worker process - no HTTP)" -ForegroundColor Gray }
 }
-if ($apiEnabled) { Write-Host '  Health       http://localhost:3000/health/ready' -ForegroundColor Gray }
+if ($apiEnabled) { Write-Host "  Health       http://localhost:$ApiPort/health/ready" -ForegroundColor Gray }
 $disabled = @()
-if (-not $apiEnabled) { $disabled += 'API (3000)' }
-if (-not $webEnabled) { $disabled += 'frontend (3001)' }
+if (-not $apiEnabled) { $disabled += "API ($ApiPort)" }
+if (-not $webEnabled) { $disabled += "frontend ($WebPort)" }
 foreach ($w in $workerTable) {
   if (-not ($workerMaster -and $svcFlags[$w.id])) { $disabled += "$($w.label.Trim()) worker (300$($w.port - 3000))" }
 }
